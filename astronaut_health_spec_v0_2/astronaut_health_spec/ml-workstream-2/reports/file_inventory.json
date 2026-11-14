@@ -1,0 +1,332 @@
+[
+  {
+    "file":"ecg.csv",
+    "rows":132,
+    "columns":13,
+    "column_names":[
+      "_id",
+      "reading_id",
+      "reading_time",
+      "wire_id",
+      "result_classification",
+      "heart_rate",
+      "heart_rate_alert",
+      "firmware_version",
+      "device_app_version",
+      "hardware_version",
+      "username",
+      "phase",
+      "waveform_samples"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":{
+      "relax":66,
+      "stress":66
+    },
+    "numeric_summary":{
+      "heart_rate":{
+        "count":132.0,
+        "mean":67.6288,
+        "std":10.307,
+        "min":41.0,
+        "25%":60.0,
+        "50%":66.5,
+        "75%":74.0,
+        "max":94.0
+      },
+      "device_app_version":{
+        "count":132.0,
+        "mean":2.16,
+        "std":0.0,
+        "min":2.16,
+        "25%":2.16,
+        "50%":2.16,
+        "75%":2.16,
+        "max":2.16
+      }
+    }
+  },
+  {
+    "file":"eda.csv",
+    "rows":20094,
+    "columns":6,
+    "column_names":[
+      "username",
+      "phase",
+      "time_sec",
+      "valid_data",
+      "activation",
+      "scl_avg"
+    ],
+    "duplicate_rows":1542,
+    "participant_id_column":"username",
+    "unique_participants":64,
+    "phase_counts":{
+      "relax":10367,
+      "stress":9727
+    },
+    "numeric_summary":{
+      "time_sec":{
+        "count":20094.0,
+        "mean":49.5165,
+        "std":336.8297,
+        "min":-3494.0,
+        "25%":40.0,
+        "50%":81.0,
+        "75%":121.0,
+        "max":163.0
+      },
+      "activation":{
+        "count":20094.0,
+        "mean":0.1413,
+        "std":0.3484,
+        "min":0.0,
+        "25%":0.0,
+        "50%":0.0,
+        "75%":0.0,
+        "max":1.0
+      },
+      "scl_avg":{
+        "count":20094.0,
+        "mean":38.4211,
+        "std":8.7513,
+        "min":2.21,
+        "25%":32.73,
+        "50%":39.8,
+        "75%":44.47,
+        "max":56.46
+      }
+    }
+  },
+  {
+    "file":"fitbit_heart_rate_per_minute.csv",
+    "rows":2131,
+    "columns":3,
+    "column_names":[
+      "username",
+      "time",
+      "value"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":null,
+    "numeric_summary":{
+      "value":{
+        "count":2131.0,
+        "mean":72.7771,
+        "std":11.5664,
+        "min":40.0,
+        "25%":65.0,
+        "50%":73.0,
+        "75%":80.0,
+        "max":139.0
+      }
+    }
+  },
+  {
+    "file":"fitbit_heart_rate_per_second.csv",
+    "rows":54462,
+    "columns":3,
+    "column_names":[
+      "username",
+      "time",
+      "value"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":null,
+    "numeric_summary":{
+      "value":{
+        "count":54462.0,
+        "mean":72.9044,
+        "std":12.2168,
+        "min":39.0,
+        "25%":65.0,
+        "50%":72.0,
+        "75%":80.0,
+        "max":152.0
+      }
+    }
+  },
+  {
+    "file":"fitbit_heart_rate_summary.csv",
+    "rows":264,
+    "columns":6,
+    "column_names":[
+      "username",
+      "zone_name",
+      "min",
+      "max",
+      "minutes",
+      "caloriesOut"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":null,
+    "numeric_summary":{
+      "min":{
+        "count":264.0,
+        "mean":112.9318,
+        "std":52.4668,
+        "min":30.0,
+        "25%":82.5,
+        "50%":118.0,
+        "75%":143.0,
+        "max":176.0
+      },
+      "max":{
+        "count":264.0,
+        "mean":160.4318,
+        "std":40.4817,
+        "min":100.0,
+        "25%":119.5,
+        "50%":144.0,
+        "75%":187.0,
+        "max":220.0
+      },
+      "minutes":{
+        "count":264.0,
+        "mean":360.0,
+        "std":624.5913,
+        "min":0.0,
+        "25%":0.0,
+        "50%":0.0,
+        "75%":361.5,
+        "max":1440.0
+      },
+      "caloriesOut":{
+        "count":264.0,
+        "mean":226.2803,
+        "std":417.3739,
+        "min":0.0,
+        "25%":0.0,
+        "50%":0.0,
+        "75%":22.9908,
+        "max":1666.0125
+      }
+    }
+  },
+  {
+    "file":"participants.csv",
+    "rows":66,
+    "columns":5,
+    "column_names":[
+      "username",
+      "sex",
+      "age",
+      "education_level",
+      "job_category"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":null,
+    "numeric_summary":{
+      "age":{
+        "count":66.0,
+        "mean":29.697,
+        "std":6.9348,
+        "min":22.0,
+        "25%":25.0,
+        "50%":27.0,
+        "75%":32.0,
+        "max":53.0
+      }
+    }
+  },
+  {
+    "file":"pss_14.csv",
+    "rows":66,
+    "columns":17,
+    "column_names":[
+      "username",
+      "time",
+      "score",
+      "In the last month, how often have you felt everything was under control?",
+      "In the last month, how often have you felt unable to control important things in your life?",
+      "In the last month, how often have you been upset by something that happened unexpectedly?",
+      "In the last month, how often have you been angry because things that happened were outside your control?",
+      "In the last month, how often have you felt confident in your ability to handle personal problems?",
+      "In the last month, how often have you successfully handled small irritations of life?",
+      "In the last month, how often have you thought about the things you still have to do?",
+      "In the last month, how often have you been able to control how you spend your time?",
+      "En el \u00faltimo mes, \u00bfcon qu\u00e9 frecuencia ha podido controlar las dificultades de su vida?",
+      "In the last month, how often have you felt you effectively managed important changes in your life?",
+      "In the last month, how often have things gone well for you?",
+      "In the last month, how often have you felt that difficulties pile up so much that you cannot overcome them?",
+      "In the last month, how often have you felt unable to cope with all the things you had to do?",
+      "In the last month, how often have you felt nervous or stressed?"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":null,
+    "numeric_summary":{
+      "score":{
+        "count":66.0,
+        "mean":24.0303,
+        "std":8.5951,
+        "min":4.0,
+        "25%":19.0,
+        "50%":24.0,
+        "75%":29.75,
+        "max":45.0
+      }
+    }
+  },
+  {
+    "file":"stai.csv",
+    "rows":132,
+    "columns":24,
+    "column_names":[
+      "username",
+      "time",
+      "phase",
+      "score",
+      "At this moment I feel good",
+      "I feel upset",
+      "I feel jittery",
+      "I feel worried",
+      "I am presently worrying about possible future misfortunes",
+      "I am relaxed",
+      "I am tense",
+      "I feel happy",
+      "I feel agitated",
+      "I feel distressed",
+      "I feel confused and over-excited",
+      "I feel calm",
+      "I feel at ease",
+      "I feel comfortable",
+      "I feel rested",
+      "\"I feel strained\"",
+      "I feel nervous",
+      "I feel satisfied",
+      "I feel secure",
+      "I have self-confidence"
+    ],
+    "duplicate_rows":0,
+    "participant_id_column":"username",
+    "unique_participants":66,
+    "phase_counts":{
+      "relax":66,
+      "stress":66
+    },
+    "numeric_summary":{
+      "score":{
+        "count":132.0,
+        "mean":35.1288,
+        "std":8.1225,
+        "min":23.0,
+        "25%":28.0,
+        "50%":34.0,
+        "75%":40.0,
+        "max":58.0
+      }
+    }
+  }
+]

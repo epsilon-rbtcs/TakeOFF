@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+env/
+
+# Conda/local environments
+.conda/
+
+# Raw/processed research data and large artifacts
+# Keep raw participant-level data out of Git unless you have explicitly
+# reviewed sharing terms and repository access.
+data/raw/
+data/interim/
+data/processed/
+models/checkpoints/
+models/preprocessors/
+logs/
+
+# Local secrets
+.env
+*.log

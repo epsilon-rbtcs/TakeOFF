@@ -1,0 +1,33 @@
+# PostgreSQL for the Ground API (local development).
+#
+#   docker compose up -d postgres
+#   # then, from services/api:
+#   alembic upgrade head
+#   python -m app.cli seed
+#   python -m app.cli serve --reload
+#
+# The API itself runs on the host so reloads and tests stay fast; only the
+# database is containerised.  Credentials here are local-only and must not be
+# reused in a real deployment.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: ground-api-postgres
+    environment:
+      POSTGRES_USER: ground
+      POSTGRES_PASSWORD: ground
+      POSTGRES_DB: astronaut_health
+    ports:
+      - "5432:5432"
+    volumes:
+      - ground_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ground -d astronaut_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  ground_pgdata:

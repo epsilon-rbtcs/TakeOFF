@@ -1,0 +1,78 @@
+file,column,dtype,non_null,null,null_pct,unique_non_null
+ecg.csv,_id,str,132,0,0.0,132
+ecg.csv,reading_id,str,132,0,0.0,130
+ecg.csv,reading_time,str,132,0,0.0,132
+ecg.csv,wire_id,str,132,0,0.0,2
+ecg.csv,result_classification,str,132,0,0.0,2
+ecg.csv,heart_rate,int64,132,0,0.0,41
+ecg.csv,heart_rate_alert,str,132,0,0.0,2
+ecg.csv,firmware_version,str,132,0,0.0,1
+ecg.csv,device_app_version,float64,132,0,0.0,1
+ecg.csv,hardware_version,str,132,0,0.0,1
+ecg.csv,username,string,132,0,0.0,66
+ecg.csv,phase,str,132,0,0.0,2
+ecg.csv,waveform_samples,str,132,0,0.0,130
+eda.csv,username,string,20094,0,0.0,64
+eda.csv,phase,str,20094,0,0.0,2
+eda.csv,time_sec,int64,20094,0,0.0,128
+eda.csv,valid_data,bool,20094,0,0.0,2
+eda.csv,activation,float64,20094,0,0.0,2
+eda.csv,scl_avg,float64,20094,0,0.0,3348
+fitbit_heart_rate_per_minute.csv,username,string,2131,0,0.0,66
+fitbit_heart_rate_per_minute.csv,time,str,2131,0,0.0,402
+fitbit_heart_rate_per_minute.csv,value,int64,2131,0,0.0,78
+fitbit_heart_rate_per_second.csv,username,string,54462,0,0.0,66
+fitbit_heart_rate_per_second.csv,time,str,54462,0,0.0,19101
+fitbit_heart_rate_per_second.csv,value,int64,54462,0,0.0,114
+fitbit_heart_rate_summary.csv,username,string,264,0,0.0,66
+fitbit_heart_rate_summary.csv,zone_name,str,264,0,0.0,4
+fitbit_heart_rate_summary.csv,min,int64,264,0,0.0,36
+fitbit_heart_rate_summary.csv,max,int64,264,0,0.0,36
+fitbit_heart_rate_summary.csv,minutes,int64,264,0,0.0,8
+fitbit_heart_rate_summary.csv,caloriesOut,float64,264,0,0.0,77
+participants.csv,username,string,66,0,0.0,66
+participants.csv,sex,str,66,0,0.0,2
+participants.csv,age,int64,66,0,0.0,24
+participants.csv,education_level,str,66,0,0.0,3
+participants.csv,job_category,str,66,0,0.0,6
+pss_14.csv,username,string,66,0,0.0,66
+pss_14.csv,time,str,66,0,0.0,65
+pss_14.csv,score,int64,66,0,0.0,28
+pss_14.csv,"In the last month, how often have you felt everything was under control?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you felt unable to control important things in your life?",str,66,0,0.0,4
+pss_14.csv,"In the last month, how often have you been upset by something that happened unexpectedly?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you been angry because things that happened were outside your control?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you felt confident in your ability to handle personal problems?",str,66,0,0.0,4
+pss_14.csv,"In the last month, how often have you successfully handled small irritations of life?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you thought about the things you still have to do?",str,66,0,0.0,4
+pss_14.csv,"In the last month, how often have you been able to control how you spend your time?",str,66,0,0.0,5
+pss_14.csv,"En el último mes, ¿con qué frecuencia ha podido controlar las dificultades de su vida?",str,66,0,0.0,4
+pss_14.csv,"In the last month, how often have you felt you effectively managed important changes in your life?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have things gone well for you?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you felt that difficulties pile up so much that you cannot overcome them?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you felt unable to cope with all the things you had to do?",str,66,0,0.0,5
+pss_14.csv,"In the last month, how often have you felt nervous or stressed?",str,66,0,0.0,5
+stai.csv,username,string,132,0,0.0,66
+stai.csv,time,str,132,0,0.0,131
+stai.csv,phase,str,132,0,0.0,2
+stai.csv,score,int64,132,0,0.0,33
+stai.csv,At this moment I feel good,str,132,0,0.0,4
+stai.csv,I feel upset,str,132,0,0.0,4
+stai.csv,I feel jittery,str,132,0,0.0,4
+stai.csv,I feel worried,str,132,0,0.0,4
+stai.csv,I am presently worrying about possible future misfortunes,str,132,0,0.0,4
+stai.csv,I am relaxed,str,132,0,0.0,4
+stai.csv,I am tense,str,132,0,0.0,3
+stai.csv,I feel happy,str,132,0,0.0,4
+stai.csv,I feel agitated,str,132,0,0.0,4
+stai.csv,I feel distressed,str,132,0,0.0,4
+stai.csv,I feel confused and over-excited,str,132,0,0.0,4
+stai.csv,I feel calm,str,132,0,0.0,4
+stai.csv,I feel at ease,str,132,0,0.0,4
+stai.csv,I feel comfortable,str,132,0,0.0,4
+stai.csv,I feel rested,str,132,0,0.0,4
+stai.csv,"""I feel strained""",str,132,0,0.0,4
+stai.csv,I feel nervous,str,132,0,0.0,4
+stai.csv,I feel satisfied,str,132,0,0.0,4
+stai.csv,I feel secure,str,132,0,0.0,3
+stai.csv,I have self-confidence,str,132,0,0.0,3

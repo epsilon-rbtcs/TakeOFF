@@ -3,6 +3,9 @@
 *.tar
 *.tar.gz
 *.tgz
+*.7z
+*.rar
+*.iso
 
 # Dependencies
 node_modules/
@@ -14,6 +17,8 @@ coverage/
 .vite/
 .cache/
 *.tsbuildinfo
+out/
+release/
 
 # Rust/Tauri build output
 target/
@@ -24,29 +29,73 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.ipynb_checkpoints/
 .venv/
 venv/
 env/
+.conda/
 
 # Local databases and runtime data
 *.db
 *.sqlite
 *.sqlite3
+*.sqlite-journal
+*.db-journal
+
+# Local and generated research data
+**/data/raw/
+**/data/interim/
+**/data/processed/
+**/models/checkpoints/
+**/models/preprocessors/
+**/logs/
+
+# Large generated/model artifacts
+*.bin
+*.h5
+*.joblib
+*.npy
+*.npz
+*.onnx
+*.parquet
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.safetensors
 
 # Environment and local configuration
 .env
 .env.*
+*.env
+*.env.*
 !.env.example
 !.env.sample
+.aws/
+.credentials/
+credentials.json
+secrets.json
+*.credentials
+*.secret
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+.npmrc
 
 # Logs and temporary files
 *.log
 *.tmp
 *.temp
+.coverage
+htmlcov/
 tmp/
 temp/
 
 # IDE and operating system files
+.agents/
 .idea/
 .vscode/
 *.swp
@@ -54,3 +103,10 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Compiled and packaged output
+*.dll
+*.dylib
+*.so
+*.exe
+*.msi

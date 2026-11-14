@@ -1,1 +1,99 @@
-:root{font-family:Inter,Arial,sans-serif;color:#000;background:#fff}*{box-sizing:border-box}body{margin:0;background:#fff}main{max-width:1080px;margin:0 auto;padding:42px 56px}header{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:18px}h1{font-size:32px;letter-spacing:-.04em;margin:0}h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;border-bottom:2px solid #000;padding-bottom:8px;margin-top:38px}button{background:#ffff08;border:1px solid #000;min-height:44px;padding:9px 12px;font:700 16px inherit;cursor:pointer}button:disabled{opacity:.55;cursor:not-allowed}article{border:1px solid #000;background:#fff;padding:14px;margin:8px 0}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.summary article{margin:0}.disclaimer{font-weight:700}.disclaimer,[role=alert]{padding:10px;border-left:6px solid #000;background:#ffff08}@media(max-width:700px){main{padding:28px 20px}header{flex-direction:column}.summary{grid-template-columns:1fr}}
+/* Ground Health Console — Authoritative Stylesheet */
+/* Strict Visual Identity: White (#FFFFFF), Black (#000000), Electric Yellow (#FFFF08) */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #000000;
+  background-color: #FFFFFF;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FFFFFF;
+}
+::-webkit-scrollbar-thumb {
+  background: #000000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333333;
+}
+
+/* Text Selection */
+::selection {
+  background-color: #FFFF08;
+  color: #000000;
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid #000000;
+  outline-offset: 1px;
+}
+
+/* Input & Select resets */
+input, select, textarea, button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+select,
+textarea {
+  background-color: #FFFFFF;
+  border: 1px solid #000000;
+  padding: 8px 10px;
+  border-radius: 0px;
+  color: #000000;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #000000;
+  box-shadow: 2px 2px 0px #000000;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 0px;
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+/* Keyframes */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

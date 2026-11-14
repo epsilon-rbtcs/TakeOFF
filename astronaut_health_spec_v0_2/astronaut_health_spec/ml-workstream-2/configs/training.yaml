@@ -1,0 +1,23 @@
+project:
+  name: qol_stress_phase_classification
+  dataset_version: "1.0.0"
+  seed: 42
+
+labels:
+  target: phase
+  classes: [relax, stress]
+
+evaluation:
+  grouping_unit: username
+  strategy: leave_one_subject_out
+  report_metrics:
+    - balanced_accuracy
+    - macro_f1
+    - sensitivity
+    - specificity
+
+modeling:
+  username_as_feature: false
+  row_level_random_split_allowed: false
+  primary_task: experimental_phase_classification
+  clinical_diagnosis: false
