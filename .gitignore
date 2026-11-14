@@ -1,0 +1,56 @@
+# Local archive/export artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# Dependencies
+node_modules/
+
+# Frontend build and test output
+dist/
+build/
+coverage/
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Rust/Tauri build output
+target/
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local databases and runtime data
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+
+# IDE and operating system files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

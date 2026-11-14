@@ -1,0 +1,14 @@
+{
+  "name": "astronaut-health-v03",
+  "private": true,
+  "workspaces": [
+    "apps/crew-client",
+    "apps/ground-console"
+  ],
+  "scripts": {
+    "test:ui": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4"
+  }
+}

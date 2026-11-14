@@ -1,0 +1,1094 @@
+openapi: 3.1.0
+info:
+  title: Crew Health Dual-Client API
+  version: 0.3.0
+  description: >-
+    Hackathon MVP API shared by the offline crew desktop client and hosted ground
+    health console. Includes store-and-forward sync and crew messaging. Simulated
+    communications only; not a NASA integration or medical diagnostic API.
+servers:
+  - url: https://example.invalid/api/v1
+    description: Replace with the deployed API base URL.
+security:
+  - bearerAuth: []
+paths:
+  /auth/demo-token:
+    post:
+      summary: Exchange a pre-seeded demo identity for a short-lived bearer token
+      operationId: createDemoToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DemoTokenIn' }
+      responses:
+        '200':
+          description: Token with role and explicit mission/astronaut scopes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DemoTokenOut' }
+        '401': { description: Demo identity credentials are invalid or inactive }
+  /measurements/catalog:
+    get:
+      summary: List supported measurement definitions
+      operationId: listMeasurements
+      parameters:
+        - in: query
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Measurement catalogue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  catalogue_version: { type: string }
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MeasurementDefinition'
+                required: [catalogue_version, items]
+  /measurements/catalog/versions:
+    post:
+      summary: Publish a versioned measurement catalogue change
+      operationId: publishMeasurementCatalogueVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MeasurementCatalogueVersionIn' }
+      responses:
+        '201': { description: Catalogue revision committed to the ground change feed }
+        '403': { description: Administrator role required }
+  /protocols/versions:
+    post:
+      summary: Publish a versioned protocol/configuration reference
+      operationId: publishProtocolVersion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProtocolVersionIn' }
+      responses:
+        '201': { description: Protocol revision committed to the ground change feed }
+        '403': { description: Administrator role required }
+  /astronauts/{astronaut_id}:
+    get:
+      summary: Get the authenticated astronaut profile within mission scope
+      operationId: getAstronaut
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+      responses:
+        '200':
+          description: Astronaut profile
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Astronaut' }
+        '403': { description: Actor lacks astronaut scope }
+        '404': { description: Astronaut not found }
+  /missions/{mission_id}:
+    get:
+      summary: Get mission context within the authenticated actor's scope
+      operationId: getMission
+      parameters:
+        - in: path
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Mission summary
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+        '403': { description: Actor lacks mission scope }
+        '404': { description: Mission not found }
+  /observations:
+    post:
+      summary: Ingest one observation
+      operationId: createObservation
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: false
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationIn'
+      responses:
+        '201':
+          description: Observation accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationOut'
+        '200':
+          description: Idempotent retry; previously accepted observation returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationOut'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    get:
+      summary: Query observations
+      operationId: listObservations
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: measurement_code
+          required: false
+          schema: { type: string }
+        - in: query
+          name: from
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: false
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Observation page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationPage'
+  /observations/batch:
+    post:
+      summary: Ingest a batch of observations
+      operationId: createObservationBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObservationBatchIn'
+      responses:
+        '200':
+          description: Per-item ingestion results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResult'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /sync/push:
+    post:
+      summary: Submit queued crew-client events (store-and-forward)
+      operationId: pushSyncEvents
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          description: Must equal the batch_id in the request body; reused value with different canonical content returns 409.
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SyncPushIn' }
+      responses:
+        '200':
+          description: Per-event sync acknowledgements
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncPushOut' }
+        '401': { description: Client authentication required }
+        '403': { description: Client not authorized for mission scope }
+        '409': { description: Batch or event ID reused with a different payload hash }
+        '422': { description: Unsupported event type, schema version, or invalid envelope }
+  /sync/pull:
+    get:
+      summary: Pull ground-originated changes after an opaque cursor
+      operationId: pullSyncChanges
+      parameters:
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: [string, 'null'] }
+        - in: query
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Ordered changes and next cursor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncPullOut' }
+        '401': { description: Client authentication required }
+        '409': { description: Cursor is invalid, expired, scoped to another client/mission, or blocked by an unsupported event schema }
+  /sync/status:
+    get:
+      summary: Get crew client's synchronization status
+      operationId: getSyncStatus
+      responses:
+        '200':
+          description: Last contact and pending acknowledgement status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunicationStatus' }
+  /communications/status:
+    get:
+      summary: Ground view of client contact and health-data freshness
+      operationId: getCommunicationStatus
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Communication and freshness state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommunicationStatus' }
+  /messages:
+    get:
+      summary: List authorized messages and crew updates
+      operationId: listMessages
+      responses:
+        '200':
+          description: Authorized messages
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Message' } } }, required: [items] }
+    post:
+      summary: Send an authorized message or versioned update to crew
+      operationId: createMessage
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageIn' }
+      responses:
+        '201':
+          description: Queued message; delivery is not implied
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '403': { description: Sender not authorized for crew/mission scope }
+  /messages/{message_id}/events:
+    post:
+      summary: Record message transmission, receipt, or read acknowledgement
+      operationId: createMessageEvent
+      parameters:
+        - in: path
+          name: message_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, maxLength: 200 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MessageEventIn' }
+      responses:
+        '201':
+          description: Audited lifecycle event recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MessageEventOut' }
+  /astronauts/{astronaut_id}/baselines:
+    get:
+      summary: List astronaut baselines
+      operationId: listBaselines
+      parameters:
+        - $ref: '#/components/parameters/AstronautId'
+        - in: query
+          name: mission_id
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Baseline records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Baseline'
+                required: [items]
+  /dashboard/summary:
+    get:
+      summary: Get dashboard health overview
+      operationId: getDashboardSummary
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+  /analysis/runs:
+    post:
+      summary: Run selected analysis modules
+      operationId: runAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRunIn'
+      responses:
+        '200':
+          description: Analysis completed synchronously and persisted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisRunOut'
+        '409': { description: Requested algorithm or rule-set version is unavailable or incompatible }
+        '500':
+          description: Failed run was persisted; no assessment was returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalysisRunFailureOut' }
+  /assessments:
+    get:
+      summary: List module and integrated assessments
+      operationId: listAssessments
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: mission_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: module_code
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assessment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      oneOf:
+                        - $ref: '#/components/schemas/ModuleAssessmentSummary'
+                        - $ref: '#/components/schemas/IntegratedAssessmentSummary'
+                      discriminator:
+                        propertyName: assessment_type
+                        mapping:
+                          module: '#/components/schemas/ModuleAssessmentSummary'
+                          integrated: '#/components/schemas/IntegratedAssessmentSummary'
+                required: [items]
+  /assessments/{assessment_id}:
+    get:
+      summary: Get assessment and its findings
+      operationId: getAssessment
+      parameters:
+        - in: path
+          name: assessment_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Assessment details
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ModuleAssessmentDetail'
+                  - $ref: '#/components/schemas/IntegratedAssessmentDetail'
+                discriminator:
+                  propertyName: assessment_type
+                  mapping:
+                    module: '#/components/schemas/ModuleAssessmentDetail'
+                    integrated: '#/components/schemas/IntegratedAssessmentDetail'
+        '404':
+          description: Assessment not found
+  /alerts:
+    get:
+      summary: List alerts
+      operationId: listAlerts
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          required: false
+          schema:
+            type: string
+            enum: [open, acknowledged, resolved, dismissed]
+      responses:
+        '200':
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+                required: [items]
+  /alerts/{alert_id}/acknowledgements:
+    post:
+      summary: Acknowledge an alert
+      operationId: acknowledgeAlert
+      parameters:
+        - in: path
+          name: alert_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 2000 }
+                expected_revision: { type: integer, minimum: 1 }
+              required: [expected_revision]
+      responses:
+        '200':
+          description: Alert acknowledged; not necessarily resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '409': { description: Current revision differs from expected_revision }
+  /actions:
+    get:
+      summary: List recommended actions
+      operationId: listActions
+      parameters:
+        - in: query
+          name: astronaut_id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Recommended actions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Action'
+                required: [items]
+  /actions/{action_id}/events:
+    post:
+      summary: Record an action lifecycle event
+      operationId: createActionEvent
+      parameters:
+        - in: path
+          name: action_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type, expected_revision]
+              properties:
+                event_type:
+                  type: string
+                  enum: [started, completed, skipped, deferred, cancelled]
+                note: { type: string, maxLength: 2000 }
+                expected_revision: { type: integer, minimum: 1 }
+      responses:
+        '201':
+          description: Event recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  event_id: { type: string, format: uuid }
+                  action_id: { type: string, format: uuid }
+                  event_type: { type: string }
+                  created_at: { type: string, format: date-time }
+                required: [event_id, action_id, event_type, created_at]
+        '409': { description: Current revision differs from expected_revision }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AstronautId:
+      in: path
+      name: astronaut_id
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    ValidationError:
+      description: Invalid request data
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    DemoTokenIn:
+      type: object
+      properties:
+        username: { type: string, minLength: 1, maxLength: 120 }
+        password: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
+      required: [username, password]
+    DemoTokenOut:
+      type: object
+      properties:
+        access_token: { type: string }
+        token_type: { const: bearer }
+        expires_in: { type: integer, minimum: 1 }
+        role: { type: string, enum: [crew_member, medical_officer, administrator] }
+        mission_ids: { type: array, items: { type: string, format: uuid } }
+        astronaut_id: { type: [string, 'null'], format: uuid }
+      required: [access_token, token_type, expires_in, role, mission_ids, astronaut_id]
+    MeasurementCatalogueVersionIn:
+      type: object
+      properties:
+        mission_id: { type: string, format: uuid }
+        version: { type: string }
+        effective_at: { type: string, format: date-time }
+        changes: { type: array, items: { $ref: '#/components/schemas/MeasurementDefinition' } }
+        change_reason: { type: string }
+      required: [mission_id, version, effective_at, changes, change_reason]
+    ProtocolVersionIn:
+      type: object
+      properties:
+        mission_id: { type: string, format: uuid }
+        protocol_code: { type: string }
+        version: { type: string }
+        approval_status: { type: string, enum: [demo_only, approved, retired] }
+        source_reference: { type: [string, 'null'] }
+        effective_at: { type: string, format: date-time }
+        content: { type: object, additionalProperties: true }
+        change_reason: { type: string }
+      required: [mission_id, protocol_code, version, approval_status, effective_at, content, change_reason]
+    MessageEventIn:
+      type: object
+      properties:
+        event_type: { type: string, enum: [transmitted, received_by_ground, received_by_crew, read, withdrawn, expired] }
+        client_created_at: { type: string, format: date-time }
+      required: [event_type, client_created_at]
+    MessageEventOut:
+      type: object
+      properties:
+        event_id: { type: string, format: uuid }
+        message_id: { type: string, format: uuid }
+        event_type: { type: string, enum: [transmitted, received_by_ground, received_by_crew, read, withdrawn, expired] }
+        actor_id: { type: string }
+        client_created_at: { type: string, format: date-time }
+        recorded_at: { type: string, format: date-time }
+      required: [event_id, message_id, event_type, actor_id, client_created_at, recorded_at]
+    Astronaut:
+      type: object
+      properties:
+        astronaut_id: { type: string, format: uuid }
+        astronaut_code: { type: string }
+        display_name: { type: string }
+      required: [astronaut_id, astronaut_code, display_name]
+    Mission:
+      type: object
+      properties:
+        mission_id: { type: string, format: uuid }
+        mission_code: { type: string }
+        mission_name: { type: string }
+        status: { type: string, enum: [planned, active, completed, cancelled] }
+      required: [mission_id, mission_code, mission_name, status]
+    SyncEvent:
+      type: object
+      description: Shared envelope for accepted crew events and server change-feed items. Server derives origin, actor and client scope from authentication for push requests.
+      properties:
+        event_id: { type: string, format: uuid }
+        entity_type:
+          type: string
+          enum: [observation, device_registration, baseline_revision, analysis_run, module_assessment, integrated_assessment, alert_event, action_event, crew_message, message_lifecycle_event, ground_message, crew_update, protocol_version, measurement_catalogue_version, communication_status]
+        entity_id: { type: string, format: uuid }
+        operation: { type: string, enum: [upsert, append_event, revoke] }
+        schema_version: { type: integer, minimum: 1 }
+        client_id: { type: [string, 'null'], format: uuid, description: Null for a ground-originated feed event not tied to a crew desktop. }
+        mission_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        actor_id: { type: string }
+        origin: { type: string, enum: [crew_client, ground_console, backend] }
+        server_sequence: { type: [integer, 'null'], minimum: 1 }
+        payload_hash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        expected_revision: { type: [integer, 'null'], minimum: 1 }
+        payload: { type: object, additionalProperties: true }
+      required: [event_id, entity_type, entity_id, operation, schema_version, client_id, mission_id, actor_id, origin, created_at, payload_hash, payload]
+    SyncPushIn:
+      type: object
+      properties:
+        batch_id: { type: string, format: uuid }
+        events: { type: array, minItems: 1, maxItems: 500, items: { $ref: '#/components/schemas/CrewSyncEventIn' } }
+      required: [batch_id, events]
+    CrewSyncEventIn:
+      allOf:
+        - $ref: '#/components/schemas/SyncEvent'
+        - type: object
+          properties:
+            origin: { const: crew_client }
+            client_id: { type: string, format: uuid }
+            server_sequence: { const: null }
+            entity_type:
+              type: string
+              enum: [observation, device_registration, baseline_revision, analysis_run, module_assessment, integrated_assessment, alert_event, action_event, crew_message, message_lifecycle_event, communication_status]
+    SyncPushOut:
+      type: object
+      properties:
+        batch_id: { type: string, format: uuid }
+        acknowledged_at: { type: string, format: date-time }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              event_id: { type: string, format: uuid }
+              status: { type: string, enum: [accepted, duplicate, rejected, conflict] }
+              reason: { type: [string, 'null'] }
+              received_at: { type: [string, 'null'], format: date-time }
+            required: [event_id, status]
+      required: [batch_id, acknowledged_at, results]
+    SyncPullOut:
+      type: object
+      properties:
+        changes: { type: array, items: { $ref: '#/components/schemas/ChangeFeedItem' } }
+        next_cursor: { type: [string, 'null'] }
+        has_more: { type: boolean }
+      required: [changes, next_cursor, has_more]
+    ChangeFeedItem:
+      allOf:
+        - $ref: '#/components/schemas/SyncEvent'
+        - type: object
+          properties:
+            server_sequence: { type: integer, minimum: 1 }
+            server_received_at: { type: string, format: date-time }
+          required: [server_sequence, server_received_at]
+    CommunicationStatus:
+      type: object
+      properties:
+        state: { type: [string, 'null'], enum: [LIVE, DELAYED, BLACKOUT, null], description: Last reported local adapter state; null if never reported. }
+        observed_at: { type: [string, 'null'], format: date-time }
+        contact_recency: { type: string, enum: [recent, stale, unknown] }
+        last_successful_contact_at: { type: [string, 'null'], format: date-time }
+        last_push_at: { type: [string, 'null'], format: date-time }
+        last_pull_at: { type: [string, 'null'], format: date-time }
+        queued_event_count: { type: integer, minimum: 0 }
+        estimated_delay_seconds: { type: [integer, 'null'], minimum: 0, description: Demo estimate only. }
+        freshness:
+          type: array
+          items:
+            type: object
+            properties:
+              astronaut_id: { type: string, format: uuid }
+              latest_measured_at: { type: [string, 'null'], format: date-time }
+              latest_received_at: { type: [string, 'null'], format: date-time }
+              age_seconds: { type: [integer, 'null'], minimum: 0 }
+              status: { type: string, enum: [current, delayed, stale, unknown] }
+            required: [status]
+      required: [state, observed_at, contact_recency, queued_event_count]
+    MessageIn:
+      type: object
+      properties:
+        mission_id: { type: string, format: uuid }
+        astronaut_id: { type: string, format: uuid }
+        message_type: { type: string, enum: [message, update, notification] }
+        title: { type: string, maxLength: 200 }
+        body: { type: string, maxLength: 10000 }
+        version: { type: [string, 'null'] }
+        expires_at: { type: [string, 'null'], format: date-time }
+      required: [mission_id, astronaut_id, message_type, title, body]
+    Message:
+      allOf:
+        - $ref: '#/components/schemas/MessageIn'
+        - type: object
+          properties:
+            message_id: { type: string, format: uuid }
+            sender_user_id: { type: string }
+            created_at: { type: string, format: date-time }
+            status: { type: string, enum: [queued, transmitted, received, read, expired] }
+          required: [message_id, sender_user_id, created_at, status]
+    MeasurementDefinition:
+      type: object
+      properties:
+        code: { type: string }
+        display_name: { type: string }
+        domain_code: { type: string }
+        value_type: { type: string, enum: [numeric, integer, text, boolean, object] }
+        canonical_unit: { type: [string, 'null'] }
+        allowed_units:
+          type: array
+          items: { type: string }
+        allowed_source_types:
+          type: array
+          items: { type: string }
+      required: [code, display_name, domain_code, value_type, allowed_units, allowed_source_types]
+    Source:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [wearable, medical_device, laboratory, manual, environmental_sensor, dosimeter, cognitive_task, import, simulation]
+        device_id: { type: [string, 'null'], format: uuid }
+        external_id: { type: [string, 'null'] }
+      required: [type]
+    Quality:
+      type: object
+      properties:
+        status: { type: string, enum: [valid, questionable, invalid, unknown] }
+        score: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        details: { type: object, additionalProperties: true }
+      required: [status]
+    ObservationIn:
+      type: object
+      properties:
+        observation_id: { type: string, format: uuid, description: Client-generated stable UUID; preserved during sync. }
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: string, format: uuid }
+        measurement_code: { type: string }
+        catalogue_version: { type: string }
+        value: {}
+        unit: { type: [string, 'null'] }
+        measured_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        device_time_raw: { type: [string, 'null'] }
+        clock_quality:
+          type: object
+          properties:
+            status: { type: string, enum: [good, degraded, unknown] }
+            offset_estimate_ms: { type: [number, 'null'] }
+            uncertainty_ms: { type: [number, 'null'], minimum: 0 }
+            reference_at: { type: [string, 'null'], format: date-time }
+            method: { type: [string, 'null'] }
+          required: [status]
+        source: { $ref: '#/components/schemas/Source' }
+        quality: { $ref: '#/components/schemas/Quality' }
+        context: { type: object, additionalProperties: true }
+        simulated: { type: boolean, default: false }
+        idempotency_key: { type: [string, 'null'], maxLength: 200 }
+      required: [observation_id, astronaut_id, mission_id, measurement_code, catalogue_version, value, measured_at, created_at, source, quality, simulated]
+    ObservationOut:
+      type: object
+      properties:
+        observation_id: { type: string, format: uuid, description: Client-generated stable ID preserved during sync. }
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: string, format: uuid }
+        measurement_code: { type: string }
+        catalogue_version: { type: string }
+        value: {}
+        unit: { type: [string, 'null'] }
+        canonical_value: { type: [number, 'null'] }
+        canonical_unit: { type: [string, 'null'] }
+        measured_at: { type: string, format: date-time }
+        received_at: { type: string, format: date-time }
+        created_at: { type: [string, 'null'], format: date-time }
+        source: { $ref: '#/components/schemas/Source' }
+        sync_status: { type: [string, 'null'], enum: [local_only, queued, in_flight, synced, rejected, conflict, null] }
+        quality_status: { type: string }
+        simulated: { type: boolean }
+      required: [observation_id, astronaut_id, mission_id, measurement_code, catalogue_version, value, measured_at, received_at, quality_status, simulated]
+    ObservationBatchIn:
+      type: object
+      properties:
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: string, format: uuid }
+        observations:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            required: [observation_id, measurement_code, catalogue_version, value, measured_at, created_at, source, quality, simulated]
+            properties:
+              observation_id: { type: string, format: uuid }
+              measurement_code: { type: string }
+              catalogue_version: { type: string }
+              value: {}
+              unit: { type: [string, 'null'] }
+              measured_at: { type: string, format: date-time }
+              created_at: { type: string, format: date-time }
+              source: { $ref: '#/components/schemas/Source' }
+              quality: { $ref: '#/components/schemas/Quality' }
+              context: { type: object, additionalProperties: true }
+              simulated: { type: boolean }
+              idempotency_key: { type: [string, 'null'] }
+      required: [astronaut_id, mission_id, observations]
+    BatchResult:
+      type: object
+      properties:
+        accepted_count: { type: integer }
+        rejected_count: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer }
+              status: { type: string, enum: [accepted, rejected, duplicate] }
+              observation_id: { type: [string, 'null'], format: uuid }
+              error_code: { type: [string, 'null'] }
+              message: { type: [string, 'null'] }
+            required: [index, status]
+      required: [accepted_count, rejected_count, results]
+    ObservationPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ObservationOut' }
+        next_cursor: { type: [string, 'null'] }
+      required: [items, next_cursor]
+    Baseline:
+      type: object
+      properties:
+        baseline_id: { type: string, format: uuid }
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: [string, 'null'], format: uuid }
+        measurement_code: { type: string }
+        status: { type: string, enum: [provisional, active, retired] }
+        method: { type: string }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        sample_count: { type: integer, minimum: 0 }
+        mean: { type: [number, 'null'] }
+        standard_deviation: { type: [number, 'null'] }
+        median: { type: [number, 'null'] }
+        mad: { type: [number, 'null'] }
+        unit: { type: [string, 'null'] }
+        version: { type: integer, minimum: 1 }
+      required: [baseline_id, astronaut_id, measurement_code, status, method, period_start, period_end, sample_count, version]
+    AnalysisRunIn:
+      type: object
+      properties:
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: string, format: uuid }
+        window_start: { type: string, format: date-time }
+        window_end: { type: string, format: date-time }
+        modules:
+          type: array
+          items: { type: string, enum: [cardiovascular, behavioural_cognitive, immune, musculoskeletal, radiation, environmental] }
+        include_integrated_assessment: { type: boolean, default: true }
+        algorithm_version: { type: string }
+        rule_set_version: { type: string }
+      required: [astronaut_id, mission_id, window_start, window_end, modules, algorithm_version, rule_set_version]
+    AnalysisRunOut:
+      type: object
+      properties:
+        run_id: { type: string, format: uuid }
+        status: { const: completed }
+        execution_location: { type: string, enum: [crew_local, ground_backend] }
+        algorithm_version: { type: string }
+        rule_set_version: { type: string }
+        implementation_build: { type: string }
+        input_snapshot_hash: { type: string }
+        completed_at: { type: string, format: date-time }
+        module_assessment_ids:
+          type: array
+          items: { type: string, format: uuid }
+        integrated_assessment_id: { type: [string, 'null'], format: uuid }
+      required: [run_id, status, execution_location, algorithm_version, rule_set_version, implementation_build, input_snapshot_hash, completed_at, module_assessment_ids]
+    AnalysisRunFailureOut:
+      type: object
+      properties:
+        run_id: { type: string, format: uuid }
+        status: { const: failed }
+        execution_location: { type: string, enum: [crew_local, ground_backend] }
+        algorithm_version: { type: string }
+        rule_set_version: { type: string }
+        implementation_build: { type: string }
+        input_snapshot_hash: { type: string }
+        completed_at: { type: string, format: date-time }
+        error_code: { type: string }
+      required: [run_id, status, execution_location, algorithm_version, rule_set_version, implementation_build, input_snapshot_hash, completed_at, error_code]
+    Finding:
+      type: object
+      properties:
+        finding_code: { type: string }
+        measurement_code: { type: [string, 'null'] }
+        severity: { type: string, enum: [info, low, moderate, high, critical] }
+        direction: { type: [string, 'null'] }
+        current_value: { type: [number, 'null'] }
+        baseline_value: { type: [number, 'null'] }
+        unit: { type: [string, 'null'] }
+        explanation: { type: string }
+        evidence_observation_ids:
+          type: array
+          items: { type: string, format: uuid }
+      required: [finding_code, severity, explanation, evidence_observation_ids]
+    ModuleAssessmentSummary:
+      type: object
+      properties:
+        assessment_id: { type: string, format: uuid }
+        assessment_type: { const: module }
+        module_code: { type: string }
+        status: { type: string, enum: [normal, monitor, attention, urgent, insufficient_data, data_quality_issue] }
+        assessed_at: { type: string, format: date-time }
+        summary: { type: string }
+        simulated: { type: boolean }
+        algorithm_version: { type: string }
+        rule_set_version: { type: string }
+      required: [assessment_id, assessment_type, module_code, status, assessed_at, summary, simulated, algorithm_version, rule_set_version]
+    IntegratedAssessmentSummary:
+      type: object
+      properties:
+        assessment_id: { type: string, format: uuid }
+        assessment_type: { const: integrated }
+        status: { type: string, enum: [normal, monitor, attention, urgent, insufficient_data, data_quality_issue] }
+        assessed_at: { type: string, format: date-time }
+        summary: { type: string }
+        simulated: { type: boolean }
+        algorithm_version: { type: string }
+        rule_set_version: { type: string }
+      required: [assessment_id, assessment_type, status, assessed_at, summary, simulated, algorithm_version, rule_set_version]
+    ModuleAssessmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/ModuleAssessmentSummary'
+        - type: object
+          properties:
+            data_sufficiency: { type: string }
+            evidence_observation_ids:
+              type: array
+              items: { type: string, format: uuid }
+            baseline_versions:
+              type: array
+              items: { type: object, properties: { baseline_id: { type: string, format: uuid }, measurement_code: { type: string }, version: { type: integer, minimum: 1 } }, required: [baseline_id, measurement_code, version] }
+            findings:
+              type: array
+              items: { $ref: '#/components/schemas/Finding' }
+            limitations:
+              type: array
+              items: { type: string }
+    IntegratedAssessmentDetail:
+      allOf:
+        - $ref: '#/components/schemas/IntegratedAssessmentSummary'
+        - type: object
+          properties:
+            component_assessment_ids:
+              type: array
+              items: { type: string, format: uuid }
+            uncertainty_notes:
+              type: array
+              items: { type: string }
+    DashboardSummary:
+      type: object
+      properties:
+        astronaut_id: { type: string, format: uuid }
+        mission_id: { type: string, format: uuid }
+        mission_day: { type: [integer, 'null'] }
+        integrated_status: { type: string, enum: [normal, monitor, attention, urgent, insufficient_data, data_quality_issue] }
+        assessed_at: { type: [string, 'null'], format: date-time }
+        domains:
+          type: array
+          items:
+            type: object
+            properties:
+              module_code: { type: string }
+              status: { type: string }
+              summary: { type: string }
+            required: [module_code, status, summary]
+        open_alert_count: { type: integer }
+        pending_action_count: { type: integer }
+        data_quality: { type: object, additionalProperties: true }
+        simulated: { type: boolean }
+        adapter_state: { type: [string, 'null'], enum: [LIVE, DELAYED, BLACKOUT, null] }
+        adapter_state_observed_at: { type: [string, 'null'], format: date-time }
+        contact_recency: { type: string, enum: [recent, stale, unknown] }
+        latest_measured_at: { type: [string, 'null'], format: date-time }
+        latest_received_at: { type: [string, 'null'], format: date-time }
+        freshness: { type: string, enum: [current, delayed, stale, unknown] }
+      required: [astronaut_id, mission_id, integrated_status, domains, open_alert_count, pending_action_count, simulated, contact_recency, freshness]
+    Alert:
+      type: object
+      properties:
+        alert_id: { type: string, format: uuid }
+        alert_code: { type: string }
+        severity: { type: string, enum: [info, low, moderate, high, critical] }
+        title: { type: string }
+        message: { type: string }
+        status: { type: string, enum: [open, acknowledged, resolved, dismissed] }
+        created_at: { type: string, format: date-time }
+        revision: { type: integer, minimum: 1 }
+      required: [alert_id, alert_code, severity, title, message, status, created_at, revision]
+    Action:
+      type: object
+      properties:
+        action_id: { type: string, format: uuid }
+        action_type: { type: string }
+        priority: { type: string }
+        title: { type: string }
+        description: { type: string }
+        due_at: { type: [string, 'null'], format: date-time }
+        status: { type: string }
+        demo_only: { type: boolean }
+        revision: { type: integer, minimum: 1 }
+      required: [action_id, action_type, title, description, status, demo_only, revision]
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            request_id: { type: string }
+          required: [code, message]
+      required: [error]
