@@ -1,71 +1,97 @@
 # Data quality report
 
-Dataset root: `data\raw\qol_stress-a-multimodal-dataset-of-physiological-and-self-reported-stress-responses-1.0.0`
+Dataset root: `D:\Projects\TakeOFF\astronaut_health_spec_v0_2\astronaut_health_spec\ml-workstream-2\data\raw\qol_stress-a-multimodal-dataset-of-physiological-and-self-reported-stress-responses-1.0.0`
 
-CSV collections found: 8
+## Missing expected collections
 
-Expected collections missing: None
+None
 
-Unexpected CSV collections: None
+## Participant coverage
 
-Distinct participant IDs across collections: 66
+Distinct participant IDs across all collections with an ID field: 66
 
-## Collection inventory
+## Collection-specific observations
 
-- `ecg.csv`: 132 rows, 13 columns, 66 unique participants, 0 duplicate rows.
+### ecg
 
-- `eda.csv`: 20094 rows, 6 columns, 64 unique participants, 1542 duplicate rows.
+- Rows: 132
+- Columns: 13
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
+- Phase counts:
+  - RELAX: 66
+  - STRESS: 66
 
-- `fitbit_heart_rate_per_minute.csv`: 2131 rows, 3 columns, 66 unique participants, 0 duplicate rows.
+### eda
 
-- `fitbit_heart_rate_per_second.csv`: 54462 rows, 3 columns, 66 unique participants, 0 duplicate rows.
+- Rows: 20094
+- Columns: 6
+- Duplicate rows: 1542
+- Participant ID field: `username`
+- Unique participants: 64
+- Phase counts:
+  - RELAX: 10367
+  - STRESS: 9727
+- `valid_data` values:
+  - True: 19708
+  - False: 386
+- `time_sec`: 20094 numeric values; 128 unique markers; 20094 rows participate in repeated markers.
 
-- `fitbit_heart_rate_summary.csv`: 264 rows, 6 columns, 66 unique participants, 0 duplicate rows.
+### fitbit_heart_rate_per_minute
 
-- `participants.csv`: 66 rows, 5 columns, 66 unique participants, 0 duplicate rows.
+- Rows: 2131
+- Columns: 3
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
 
-- `pss_14.csv`: 66 rows, 17 columns, 66 unique participants, 0 duplicate rows.
+### fitbit_heart_rate_per_second
 
-- `stai.csv`: 132 rows, 24 columns, 66 unique participants, 0 duplicate rows.
+- Rows: 54462
+- Columns: 3
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
 
+### fitbit_heart_rate_summary
 
-## ecg: phase coverage
+- Rows: 264
+- Columns: 6
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
 
-phase
-relax     66
-stress    66
+### participants
 
+- Rows: 66
+- Columns: 5
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
 
-## eda: phase coverage
+### pss_14
 
-phase
-relax     10367
-stress     9727
+- Rows: 66
+- Columns: 17
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
 
+### stai
 
-## eda: valid_data values
+- Rows: 132
+- Columns: 24
+- Duplicate rows: 0
+- Participant ID field: `username`
+- Unique participants: 66
+- Phase counts:
+  - RELAX: 66
+  - STRESS: 66
 
-valid_data
-True     19708
-False      386
+## Interpretation cautions
 
-
-## eda: time_sec diagnostics
-
-Rows: 20094; unique time markers: 128; repeated time_sec rows: 19966; missing/non-numeric: 0.
-
-
-## stai: phase coverage
-
-phase
-relax     66
-stress    66
-
-
-## ECG waveform field diagnostics
-
-Non-null waveform records: 132
-
-Example stored field length (characters): 34792
-
-The waveform field is stored as a sequence inside a CSV cell. Parse it only after verifying the exact delimiter and numeric format. Do not infer amplitude units unless supplied by dataset documentation.
+- Do not assume `time_sec` is a uniform one-second sampling clock.
+- Do not silently interpolate or resample gaps.
+- Do not assume that every modality has a complete matching record for every participant and phase.
+- Do not interpret experimental phase labels as clinical outcomes.

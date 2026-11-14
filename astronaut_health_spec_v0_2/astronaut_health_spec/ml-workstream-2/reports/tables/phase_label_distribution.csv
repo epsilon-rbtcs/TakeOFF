@@ -1,7 +1,7 @@
-collection,label,count
-ecg,relax,66
-ecg,stress,66
-eda,relax,10367
-eda,stress,9727
-stai,relax,66
-stai,stress,66
+collection,phase,records
+ecg,RELAX,66
+ecg,STRESS,66
+eda,RELAX,10367
+eda,STRESS,9727
+stai,RELAX,66
+stai,STRESS,66

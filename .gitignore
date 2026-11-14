@@ -16,6 +16,13 @@ build/
 coverage/
 .vite/
 .cache/
+.parcel-cache/
+.turbo/
+.next/
+.nuxt/
+.svelte-kit/
+*.eslintcache
+*.stylelintcache
 *.tsbuildinfo
 out/
 release/
@@ -29,6 +36,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pytype/
+.tox/
+.nox/
+.hypothesis/
 .ipynb_checkpoints/
 .venv/
 venv/
@@ -41,6 +52,8 @@ env/
 *.sqlite3
 *.sqlite-journal
 *.db-journal
+*.rdb
+*.mdb
 
 # Local and generated research data
 **/data/raw/
@@ -89,6 +102,12 @@ secrets.json
 *.log
 *.tmp
 *.temp
+*.bak
+*.backup
+*.orig
+*.rej
+*.pid
+*.pid.lock
 .coverage
 htmlcov/
 tmp/

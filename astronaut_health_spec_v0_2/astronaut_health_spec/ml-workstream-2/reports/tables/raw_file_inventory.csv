@@ -1,0 +1,9 @@
+file,extension,size_bytes,recognised_collection
+ecg.csv,.csv,4801152,True
+eda.csv,.csv,1823966,True
+fitbit_heart_rate_per_minute.csv,.csv,166002,True
+fitbit_heart_rate_per_second.csv,.csv,4242562,True
+fitbit_heart_rate_summary.csv,.csv,23799,True
+participants.csv,.csv,6437,True
+pss_14.csv,.csv,17527,True
+stai.csv,.csv,47345,True
