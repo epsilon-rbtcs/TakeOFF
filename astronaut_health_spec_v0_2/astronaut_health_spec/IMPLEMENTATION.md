@@ -10,4 +10,4 @@ The v0.3 source documents remain authoritative. This implementation covers only 
 
 Crew demo credentials are `astronaut` / `crew-demo`; ground demo credentials are `medical` / `ground-demo`. They are development-only placeholders.
 
-The crew desktop client uses the Tauri SQL plugin and a local SQLite database. SQLCipher is not installed, configured, or verified; the UI says so. The backend defaults to SQLite for a no-infrastructure local demonstration but accepts `DATABASE_URL` for a PostgreSQL deployment.
+The crew desktop client uses the Tauri SQL plugin and a local SQLite database. SQLCipher is not installed, configured, or verified; the UI says so. The Ground API requires PostgreSQL for its current schema and uses `DATABASE_URL` to select the deployment database. Run the bundled Docker Compose stack for local development.

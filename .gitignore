@@ -9,11 +9,23 @@
 
 # Dependencies
 node_modules/
+.npm/
+.pnpm-store/
+.yarn/*
+!.yarn/patches/
+!.yarn/plugins/
+!.yarn/releases/
+!.yarn/sdks/
+!.yarn/versions/
+.pnp.*
 
 # Frontend build and test output
 dist/
 build/
 coverage/
+test-results/
+playwright-report/
+test-report/
 .vite/
 .cache/
 .parcel-cache/
@@ -54,7 +66,11 @@ env/
 *.sqlite
 *.sqlite3
 *.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
 *.db-journal
+*.db-shm
+*.db-wal
 *.rdb
 *.mdb
 
@@ -82,6 +98,7 @@ artifacts/
 *.tfstate
 *.tfstate.*
 .serverless/
+.vercel/
 
 # Large generated/model artifacts
 *.bin
@@ -104,10 +121,13 @@ artifacts/
 *.env.*
 !.env.example
 !.env.sample
+.envrc
+.direnv/
 .aws/
 .credentials/
 credentials.json
 secrets.json
+secrets/
 *.credentials
 *.secret
 *.pem
@@ -129,6 +149,7 @@ secrets.json
 *.pid
 *.pid.lock
 .coverage
+.coverage.*
 htmlcov/
 tmp/
 temp/
@@ -136,12 +157,20 @@ temp/
 # IDE and operating system files
 .agents/
 .idea/
+.vs/
 .vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
+ehthumbs.db
 Desktop.ini
+._*
+$RECYCLE.BIN/
 
 # Compiled and packaged output
 *.dll
