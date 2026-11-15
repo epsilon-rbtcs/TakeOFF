@@ -1,0 +1,19 @@
+{
+  "study_id": "OSD-575",
+  "input_primary_records": 15813,
+  "numeric_product_observations": 15813,
+  "unique_subjects": 0,
+  "unique_analytes": 572,
+  "health_domains": [
+    "cardiovascular",
+    "immune",
+    "metabolic"
+  ],
+  "jsonl_records": 15813,
+  "observations_missing_subject_id": 15813,
+  "observations_missing_timepoint": 15813,
+  "observations_missing_unit": 15813,
+  "clinical_thresholds_applied": false,
+  "live_telemetry": false,
+  "runtime_seconds": 1.43
+}

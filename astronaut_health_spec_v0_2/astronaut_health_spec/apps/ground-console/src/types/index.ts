@@ -16,6 +16,7 @@ export interface AuthToken {
   role: UserRole;
   mission_ids: string[];
   astronaut_id: string | null;
+  is_demo?: boolean;
 }
 
 export interface UserProfile {
@@ -104,7 +105,7 @@ export type ObservationSource =
   | 'simulation';
 
 export type DataQuality = 'valid' | 'suspect' | 'invalid' | 'missing' | 'unknown';
-export type DataFreshness = 'current' | 'recent' | 'stale' | 'unavailable' | 'unknown';
+export type DataFreshness = 'current' | 'delayed' | 'recent' | 'stale' | 'unavailable' | 'unknown';
 
 export interface Observation {
   observation_id: string;

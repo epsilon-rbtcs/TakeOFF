@@ -81,6 +81,9 @@ export function formatValue(value: number | undefined | null, unit: string, prec
     mSv: 'mSv',
     mGy: 'mGy',
     'uSv/h': 'µSv/h',
+    'mSv/h': 'mSv/h',
+    mL: 'mL',
+    assay_specific: 'assay-specific',
     count: '',
     kgf: 'kgf',
     'g/cm2': 'g/cm²',
@@ -140,7 +143,35 @@ export function getMeasurementLabel(code: string): string {
     cabin_co2: 'Cabin Carbon Dioxide (CO₂)',
     cabin_temperature: 'Cabin Temperature',
     relative_humidity: 'Relative Humidity',
-    cabin_pressure: 'Cabin Pressure'
+    cabin_pressure: 'Cabin Pressure',
+    // Crew-client compatibility codes (published by the measurement catalogue).
+    sleep_quality: 'Sleep Quality',
+    fatigue: 'Fatigue',
+    recovery: 'Perceived Recovery',
+    mood: 'Mood',
+    stress: 'Stress',
+    isolation: 'Isolation Self-Report',
+    motivation: 'Motivation',
+    reaction_time_median: 'Median Reaction Time',
+    premature_responses: 'Premature Responses',
+    exercise_minutes: 'Exercise Duration',
+    exercise_duration: 'Exercise Duration',
+    resistance_training: 'Resistance Training',
+    muscle_soreness: 'Muscle Soreness',
+    physical_function: 'Physical Function',
+    bone_density: 'Bone Density',
+    headache: 'Headache',
+    dizziness: 'Dizziness',
+    nausea: 'Nausea',
+    laboratory_biomarker: 'Laboratory Biomarker',
+    personal_dose_rate: 'Personal Dose Rate',
+    personal_cumulative_dose: 'Personal Cumulative Dose',
+    humidity: 'Relative Humidity',
+    environmental_radiation: 'Environmental Radiation',
+    fluid_intake: 'Fluid Intake',
+    meals: 'Meals',
+    appetite: 'Appetite',
+    nutrition_observations: 'Nutrition Observations'
   };
   return map[code] ?? code.replace(/_/g, ' ').toUpperCase();
 }
@@ -152,6 +183,8 @@ export function getDataFreshnessLabel(freshness: DataFreshness): string {
   switch (freshness) {
     case 'current':
       return 'CURRENT (<1h)';
+    case 'delayed':
+      return 'DELAYED (WITHIN THRESHOLD)';
     case 'recent':
       return 'RECENT (1–4h)';
     case 'stale':
@@ -327,4 +360,120 @@ export function classNames(...args: (string | undefined | null | false | Record<
     }
   }
   return classes.join(' ');
+}
+
+// --- Backend vocabulary mapping ------------------------------------------
+// The API reports `current | delayed | stale | unknown` data freshness and a
+// nullable adapter state. These helpers normalise those strings for display
+// without ever upgrading an unknown value to a nominal one.
+
+export function normaliseFreshness(value: string | null | undefined): DataFreshness {
+  if (value === 'current' || value === 'delayed' || value === 'stale' || value === 'unknown') {
+    return value;
+  }
+  if (value === 'recent') return 'delayed';
+  if (value === 'unavailable') return 'unavailable';
+  return 'unknown';
+}
+
+export function normaliseCommunicationState(value: string | null | undefined): CommunicationState {
+  if (value === 'LIVE' || value === 'DELAYED' || value === 'BLACKOUT') return value;
+  return 'UNKNOWN';
+}
+
+export function getAlertStatusLabel(status: string): string {
+  switch (status) {
+    case 'open':
+      return 'OPEN';
+    case 'acknowledged':
+      return 'ACKNOWLEDGED';
+    case 'monitoring':
+      return 'MONITORING';
+    case 'resolved':
+      return 'RESOLVED';
+    case 'dismissed':
+      return 'DISMISSED';
+    default:
+      return status.replace(/_/g, ' ').toUpperCase();
+  }
+}
+
+export function getActionStatusLabel(status: string): string {
+  switch (status) {
+    case 'pending':
+      return 'PENDING';
+    case 'in_progress':
+      return 'IN PROGRESS';
+    case 'completed':
+      return 'COMPLETED';
+    case 'deferred':
+      return 'DEFERRED';
+    case 'skipped':
+      return 'SKIPPED';
+    case 'cancelled':
+      return 'CANCELLED';
+    default:
+      return status.replace(/_/g, ' ').toUpperCase();
+  }
+}
+
+export function getActionTypeLabel(actionType: string): string {
+  const map: Record<string, string> = {
+    repeat_measurement: 'Repeat measurement',
+    complete_assessment: 'Complete assessment',
+    review_protocol: 'Review protocol',
+    contact_medical_officer: 'Contact medical officer',
+    scheduled_test: 'Scheduled test',
+    informational: 'Informational'
+  };
+  return map[actionType] ?? actionType.replace(/_/g, ' ');
+}
+
+export function getPriorityLabel(priority: string): string {
+  return priority.replace(/_/g, ' ').toUpperCase();
+}
+
+export function getSourceTypeLabel(sourceType: string): string {
+  const map: Record<string, string> = {
+    wearable: 'Wearable',
+    medical_device: 'Medical device',
+    laboratory: 'Laboratory',
+    manual: 'Manual entry',
+    environmental_sensor: 'Environmental sensor',
+    dosimeter: 'Dosimeter',
+    cognitive_task: 'Cognitive task',
+    import: 'Import',
+    simulation: 'Simulation'
+  };
+  return map[sourceType] ?? sourceType.replace(/_/g, ' ');
+}
+
+export function formatSecondsDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || isNaN(seconds)) return '—';
+  const total = Math.max(0, Math.round(seconds));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+export function isNumericValue(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/** Coerce a backend status string into the console's badge vocabulary. */
+export function toAssessmentStatus(value: string | null | undefined): AssessmentStatus {
+  switch (value) {
+    case 'normal':
+    case 'monitor':
+    case 'attention':
+    case 'urgent':
+    case 'insufficient_data':
+    case 'data_quality_issue':
+      return value;
+    default:
+      return 'insufficient_data';
+  }
 }

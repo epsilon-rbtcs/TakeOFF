@@ -1,0 +1,15 @@
+relative_path,filename,extension,detected_role,size_bytes,size_kb,modified_time
+a_OSD-575_analytical-chemistry_comprehensive-metabolic-panel_quest diagnostics.txt,a_OSD-575_analytical-chemistry_comprehensive-metabolic-panel_quest diagnostics.txt,.txt,ISA metadata,7973,7.79,2026-11-15 07:19:01.856678486
+a_OSD-575_immunoassay_multiplex_Alamar Biosciences.txt,a_OSD-575_immunoassay_multiplex_Alamar Biosciences.txt,.txt,ISA metadata,10917,10.66,2026-11-15 07:19:01.881640196
+a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HD71.txt,a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HD71.txt,.txt,ISA metadata,11665,11.39,2026-11-15 07:19:01.868143082
+a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HDCVD9.txt,a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HDCVD9.txt,.txt,ISA metadata,13037,12.73,2026-11-15 07:19:01.861936092
+i_Investigation.txt,i_Investigation.txt,.txt,ISA metadata,13753,13.43,2026-11-15 07:19:01.875220060
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED.csv,.csv,Candidate assay/result table,25275,24.68,2026-11-15 07:27:57.380322456
+LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv,.csv,Candidate assay/result table,8506,8.31,2026-11-15 07:27:57.386685610
+LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED.csv,.csv,Candidate assay/result table,15241,14.88,2026-11-15 07:27:57.392768860
+LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx,LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx,.xlsx,Candidate assay/result table,322799,315.23,2026-11-15 07:27:57.399227142
+LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv,.csv,Candidate assay/result table,141783,138.46,2026-11-15 07:27:57.405250788
+LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED.csv,.csv,Candidate assay/result table,107418,104.9,2026-11-15 07:27:57.411679029
+LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv,.csv,Candidate assay/result table,6207,6.06,2026-11-15 07:27:57.418051243
+LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv,.csv,Candidate assay/result table,41214,40.25,2026-11-15 07:27:57.375063419
+s_OSD-575.txt,s_OSD-575.txt,.txt,ISA metadata,13287,12.98,2026-11-15 07:19:01.887608290

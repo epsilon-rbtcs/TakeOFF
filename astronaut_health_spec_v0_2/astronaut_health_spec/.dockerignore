@@ -1,0 +1,34 @@
+# Build context for the Ground API image (repository root).
+# Keep the context small and avoid sending local secrets/artefacts.
+
+.git
+.gitignore
+.agents
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.cache
+**/.vite
+**/target
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.venv
+**/venv
+**/.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/data/raw
+**/data/interim
+**/data/processed
+**/models/checkpoints
+**/models/preprocessors
+**/mlruns
+**/wandb
+**/notebooks
+**/*.zip
+**/*.ipynb

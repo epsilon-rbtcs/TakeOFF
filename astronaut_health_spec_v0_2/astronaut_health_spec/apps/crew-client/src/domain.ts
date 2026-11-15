@@ -1,4 +1,5 @@
-export const astronautId="11111111-1111-1111-1111-111111111111",missionId="22222222-2222-2222-2222-222222222222",clientId="33333333-3333-3333-3333-333333333333";
+// Identifiers published by the seeded demonstration backend (app/seed.py).
+export const astronautId="22222222-2222-2222-2222-222222222222",missionId="11111111-1111-1111-1111-111111111111",clientId="33333333-3333-3333-3333-333333333333";
 export type Baseline={id:string;value:number;version:number;method:string};export type Observation={id:string;value:number;measuredAt:string;createdAt:string;syncStatus:string};export type Assessment={id:string;observationId:string;assessedAt:string;summary:string;delta:number|null;status:"normal"|"insufficient_data"|"data_quality_issue";syncStatus:string};export type Measurement={domain:string;code:string;label:string;unit:string;min?:number;max?:number};
 export const measurements:Measurement[]=[
  {domain:"cardiovascular",code:"heart_rate",label:"Heart rate",unit:"bpm",min:1},{domain:"cardiovascular",code:"hrv_rmssd",label:"HRV (RMSSD)",unit:"ms",min:0},{domain:"cardiovascular",code:"systolic_bp",label:"Systolic blood pressure",unit:"mmHg",min:1},{domain:"cardiovascular",code:"diastolic_bp",label:"Diastolic blood pressure",unit:"mmHg",min:1},{domain:"cardiovascular",code:"spo2",label:"Oxygen saturation",unit:"%",min:0,max:100},{domain:"cardiovascular",code:"body_temperature",label:"Body temperature",unit:"°C",min:25,max:45},
@@ -9,6 +10,21 @@ export const measurements:Measurement[]=[
  {domain:"radiation",code:"personal_dose_rate",label:"Personal dose rate",unit:"mSv/h",min:0},{domain:"radiation",code:"personal_cumulative_dose",label:"Personal cumulative dose",unit:"mSv",min:0},
  {domain:"environmental",code:"cabin_co2",label:"Cabin CO₂",unit:"ppm",min:0},{domain:"environmental",code:"cabin_temperature",label:"Cabin temperature",unit:"°C",min:-100,max:100},{domain:"environmental",code:"humidity",label:"Humidity",unit:"%",min:0,max:100},{domain:"environmental",code:"cabin_pressure",label:"Cabin pressure",unit:"kPa",min:0},{domain:"environmental",code:"environmental_radiation",label:"Environmental radiation",unit:"µSv/h",min:0}];
 export const measurement=(code:string,domain?:string)=>measurements.find(x=>x.code===code&&(!domain||x.domain===domain));
+// --- Backend catalogue compatibility -------------------------------------
+// The local store keeps the crew client's own codes.  Only the wire payload is
+// translated to the API catalogue.  Codes with no catalogue equivalent remain
+// local-only rather than being invented as server measurements.
+const API_CODE_ALIASES:Record<string,string>={pain:"pain_score"};
+const LOCAL_ONLY_CODES=new Set(["vision_changes","laboratory_biomarker"]);
+export function apiCode(code:string){return API_CODE_ALIASES[code]??code;}
+export function isSyncable(code:string,unit:string){return unit!=="text"&&!LOCAL_ONLY_CODES.has(code);}
+export function sourceType(code:string){
+ if(code==="personal_dose_rate"||code==="personal_cumulative_dose")return"dosimeter";
+ if(code==="bone_density")return"import";
+ if(code==="reaction_time_median"||code==="premature_responses")return"cognitive_task";
+ if(code==="cabin_co2"||code==="cabin_temperature"||code==="cabin_pressure"||code==="humidity"||code==="environmental_radiation")return"environmental_sensor";
+ return"manual";
+}
 export function validateMeasurement(code:string,value:string,domain?:string){const item=measurement(code,domain),n=Number(value);if(!item||!Number.isFinite(n))return"Enter a numeric value.";if((item.min!==undefined&&n<item.min)||(item.max!==undefined&&n>item.max))return`${item.label} is outside the supported input range for this demo.`;return null;}
 export function analyse(o:Observation,b:Baseline|null):Assessment{if(!b)return{id:crypto.randomUUID(),observationId:o.id,assessedAt:new Date().toISOString(),delta:null,status:"insufficient_data",syncStatus:"queued",summary:"Insufficient data: no configured personal heart-rate baseline is available. No clinical conclusion was generated."};const delta=o.value-b.value;return{id:crypto.randomUUID(),observationId:o.id,assessedAt:new Date().toISOString(),delta,status:"normal",syncStatus:"queued",summary:`Demo baseline comparison: ${o.value} bpm versus this crew member's configured ${b.value} bpm baseline (${delta>=0?"+":""}${delta} bpm). No clinical threshold, diagnosis, or medical clearance is applied.`};}
 export function analysisForRecords(records:{id:string;code:string;value:string;measuredAt:string}[]){if(!records.length)return{status:"insufficient_data",summary:"Insufficient data: no observations are available for this view."};const age=Date.now()-Date.parse(records[0].measuredAt);if(Number.isFinite(age)&&age>7*86400000)return{status:"insufficient_data",summary:"Data are stale: the latest available observation is older than seven days."};return{status:"normal",summary:`${records.length} locally stored observation${records.length===1?"":"s"} are available for review. No diagnosis or medical conclusion is generated.`};}

@@ -1,0 +1,9 @@
+file,table,status,rows,columns,detail
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,loaded,531.0,9.0,
+LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED,loaded,28.0,58.0,
+LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED,loaded,252.0,8.0,
+LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx,,error,,,"ImportError: `Import openpyxl` failed.  Use pip, conda, or your preferred package management tool to install the openpyxl package."
+LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED,loaded,27.0,407.0,
+LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED,loaded,1988.0,8.0,
+LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED,loaded,28.0,19.0,
+LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED,loaded,28.0,143.0,

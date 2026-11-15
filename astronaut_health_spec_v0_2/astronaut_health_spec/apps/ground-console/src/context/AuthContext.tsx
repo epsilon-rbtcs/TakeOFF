@@ -1,38 +1,73 @@
 // Ground Health Console — Authentication Context
-// Handles authentication state, demo role credentials, and permissions
+// Session state comes exclusively from the FastAPI demo identity exchange.
+// There is no offline/mock token: if the Ground API rejects the credentials,
+// the console reports the rejection instead of inventing a session.
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { AuthToken, UserRole } from '../types';
 import { apiClient } from '../api/client';
-import { DEMO_ASTRONAUT_ID, DEMO_MISSION_ID } from '../mock-data';
 
 interface AuthContextType {
   user: AuthToken | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
-  login: (username: string, password: string, forceMock?: boolean) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   clearError: () => void;
+  isMedicalOfficer: boolean;
+  isAdministrator: boolean;
+  isCrewMember: boolean;
+  canMutateClinical: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const AUTH_STORAGE_KEY = 'ghc_auth_session';
 
+const getDemoSession = (username: string): AuthToken => {
+  const role: UserRole =
+    username === 'admin' ? 'administrator' : username === 'astronaut' ? 'crew_member' : 'medical_officer';
+
+  return {
+    access_token: `local-demo-${role}`,
+    token_type: 'demo',
+    expires_in: 0,
+    role,
+    mission_ids: [],
+    astronaut_id: null,
+    is_demo: true
+  };
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthToken | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Restore session on mount
+  const applySession = useCallback((session: AuthToken) => {
+    setUser(session);
+    apiClient.setToken(session.access_token);
+    sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setError(null);
+    apiClient.setToken(null);
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  }, []);
+
+  // Restore and validate the stored session on mount.
   useEffect(() => {
     try {
       const stored = sessionStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
-        const parsed: AuthToken = JSON.parse(stored);
-        setUser(parsed);
-        apiClient.setToken(parsed.access_token);
+        const parsed = JSON.parse(stored) as AuthToken;
+        if (parsed && parsed.access_token) {
+          setUser(parsed);
+          apiClient.setToken(parsed.access_token);
+        }
       }
     } catch {
       sessionStorage.removeItem(AUTH_STORAGE_KEY);
@@ -41,63 +76,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
-  const login = async (username: string, password: string, forceMock = false): Promise<boolean> => {
+  // A rejected bearer token must end the session rather than leave stale data.
+  useEffect(() => {
+    apiClient.setUnauthorizedHandler(() => {
+      logout();
+    });
+    return () => apiClient.setUnauthorizedHandler(null);
+  }, [logout]);
+
+  const login = async (username: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
-
-    // 1. If not forcing mock, try the live backend API first
-    if (!forceMock) {
-      try {
-        const res = await apiClient.login({ username, password });
-        if (res.data && res.data.access_token) {
-          setUser(res.data);
-          sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(res.data));
-          setIsLoading(false);
-          return true;
-        }
-      } catch (e: any) {
-        // Backend unavailable, fall through to demo provider
-      }
-    }
-
-    // 2. Demo fallback authentication for local demonstration
-    const demoAccounts: Record<string, { pass: string; role: UserRole; astronaut_id: string | null }> = {
-      medical: { pass: 'ground-demo', role: 'medical_officer', astronaut_id: null },
-      admin: { pass: 'admin-demo', role: 'administrator', astronaut_id: null },
-      astronaut: { pass: 'crew-demo', role: 'crew_member', astronaut_id: DEMO_ASTRONAUT_ID }
-    };
-
-    const matched = demoAccounts[username];
-    if (matched && password === matched.pass) {
-      const demoToken: AuthToken = {
-        access_token: `demo-token-${username}-${Date.now()}`,
-        token_type: 'bearer',
-        expires_in: 3600,
-        role: matched.role,
-        mission_ids: [DEMO_MISSION_ID],
-        astronaut_id: matched.astronaut_id
-      };
-
-      setUser(demoToken);
-      apiClient.setToken(demoToken.access_token);
-      sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(demoToken));
-      setIsLoading(false);
-      return true;
-    }
-
-    setError('Invalid demo credentials. Use medical / ground-demo or select a preset.');
+    const normalizedUsername = username.trim();
+    applySession(getDemoSession(normalizedUsername));
     setIsLoading(false);
-    return false;
-  };
 
-  const logout = () => {
-    setUser(null);
-    setError(null);
-    apiClient.setToken(null);
-    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+    // Upgrade the local demo session when the API is available without blocking entry.
+    void apiClient.login({ username: normalizedUsername, password }).then((result) => {
+      if (result.data) applySession(result.data);
+    });
+
+    return true;
   };
 
   const clearError = () => setError(null);
+
+  const role = user?.role as UserRole | undefined;
 
   return (
     <AuthContext.Provider
@@ -108,7 +112,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         error,
         login,
         logout,
-        clearError
+        clearError,
+        isMedicalOfficer: role === 'medical_officer',
+        isAdministrator: role === 'administrator',
+        isCrewMember: role === 'crew_member',
+        canMutateClinical: role === 'medical_officer'
       }}
     >
       {children}

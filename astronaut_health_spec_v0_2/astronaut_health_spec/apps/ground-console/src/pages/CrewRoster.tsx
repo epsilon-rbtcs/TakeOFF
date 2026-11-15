@@ -1,261 +1,236 @@
-// Ground Health Console — Crew Roster Page
-// Astronaut directory with domain coverage, search filtering, and workspace access
+// Ground Health Console — Crew Roster
+// Every row is an enrolled astronaut returned by the Ground API.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useCrewRoster } from '../api/hooks';
+import { useData } from '../context/DataContext';
+import { useCrewOverview } from '../api/hooks';
+import type { CrewOverviewRow } from '../api/hooks';
 import { DataTable, Column } from '../components/common/DataTable';
-import { CommStateBadge, FreshnessBadge, SyntheticTag } from '../components/common/StatusBadge';
+import { AssessmentBadge, FreshnessBadge } from '../components/common/StatusBadge';
+import { TimeDisplay } from '../components/common/TimeDisplay';
 import { PrimaryButton, SecondaryButton } from '../components/common/Buttons';
-import { IconSearch, IconCrew } from '../components/common/Icons';
-import { AstronautSummary } from '../types';
-import { formatTimestamp } from '../utilities';
+import { LoadingState } from '../components/common/LoadingState';
+import { EmptyState } from '../components/common/EmptyState';
+import { IconRefresh, IconSearch } from '../components/common/Icons';
+import { ErrorNotice, PageHeader, Panel } from '../components/common/PageChrome';
+import { formatTimestamp, normaliseFreshness, toAssessmentStatus } from '../utilities';
 
 export const CrewRoster: React.FC = () => {
   const navigate = useNavigate();
-  const { summary } = useCrewRoster();
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const { mission, missionId, missionError, crewError, selectedAstronautId, selectAstronaut } = useData();
+  const crew = useCrewOverview();
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
-  const filteredCrew = summary.filter((astronaut) => {
-    const matchesSearch =
-      astronaut.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      astronaut.callsign.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      astronaut.role_in_crew.toLowerCase().includes(searchTerm.toLowerCase());
+  const rows = crew.data?.rows ?? [];
 
-    const matchesStatus =
-      statusFilter === 'all' ||
-      (statusFilter === 'active' && astronaut.communication_status === 'LIVE') ||
-      (statusFilter === 'pending' && astronaut.pending_assessments > 0);
+  const filtered = useMemo(
+    () =>
+      rows.filter((row) => {
+        const term = search.trim().toLowerCase();
+        const matchesSearch =
+          term.length === 0 ||
+          row.astronaut.display_name.toLowerCase().includes(term) ||
+          row.astronaut.astronaut_code.toLowerCase().includes(term);
+        const status = row.dashboard?.integrated_status ?? 'insufficient_data';
+        const matchesStatus = statusFilter === 'all' || status === statusFilter;
+        return matchesSearch && matchesStatus;
+      }),
+    [rows, search, statusFilter]
+  );
 
-    return matchesSearch && matchesStatus;
-  });
-
-  const columns: Column<AstronautSummary>[] = [
+  const columns: Column<CrewOverviewRow>[] = [
     {
       key: 'identity',
-      header: 'Astronaut Profile',
+      header: 'Identity',
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 800, fontSize: '13px' }}>{row.name}</div>
-          <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.6)' }}>
-            Callsign: <strong style={{ color: '#000000' }}>{row.callsign}</strong> · {row.role_in_crew}
-          </div>
-          <div style={{ fontSize: '10px', color: 'rgba(0,0,0,0.4)', fontFamily: 'monospace' }}>
-            ID: {row.astronaut_id}
+          <div style={{ fontWeight: 800 }}>{row.astronaut.display_name}</div>
+          <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+            {row.astronaut.astronaut_code} · {row.astronaut.astronaut_id.slice(0, 8)}
           </div>
         </div>
       )
     },
     {
-      key: 'domains',
-      header: 'Monitored Domains',
-      render: () => (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          {['CV', 'SLP', 'COG', 'MSK', 'RAD', 'ENV'].map((d) => (
-            <span
-              key={d}
-              style={{
-                fontSize: '9px',
-                fontWeight: 700,
-                border: '1px solid rgba(0,0,0,0.2)',
-                padding: '1px 4px',
-                backgroundColor: '#F9F9F9'
-              }}
-            >
-              {d}
-            </span>
-          ))}
-        </div>
-      )
-    },
-    {
-      key: 'last_update',
-      header: 'Last Downlink',
+      key: 'missions',
+      header: 'Mission scope',
       render: (row) => (
-        <div>
-          <div style={{ fontWeight: 600, fontSize: '12px' }}>
-            {formatTimestamp(row.last_health_update, 'time')}
-          </div>
-          <div style={{ fontSize: '10px', color: 'rgba(0,0,0,0.5)' }}>
-            {formatTimestamp(row.last_health_update, 'date')}
-          </div>
-        </div>
+        <span style={{ fontSize: '10px', fontFamily: 'monospace' }}>
+          {row.astronaut.mission_ids.map((id) => id.slice(0, 8)).join(', ') || '—'}
+        </span>
       )
     },
     {
-      key: 'assessments',
-      header: 'Pending Assessments',
+      key: 'status',
+      header: 'Integrated status',
+      render: (row) =>
+        row.dashboard ? (
+          <AssessmentBadge status={toAssessmentStatus(row.dashboard.integrated_status)} />
+        ) : (
+          '—'
+        )
+    },
+    {
+      key: 'freshness',
+      header: 'Freshness',
+      render: (row) =>
+        row.dashboard ? (
+          <FreshnessBadge freshness={normaliseFreshness(row.dashboard.freshness)} />
+        ) : (
+          '—'
+        )
+    },
+    {
+      key: 'measured',
+      header: 'Latest measurement',
+      render: (row) =>
+        row.dashboard?.latest_measured_at ? (
+          <TimeDisplay measured_at={row.dashboard.latest_measured_at} format="compact" />
+        ) : (
+          'No measurement'
+        )
+    },
+    {
+      key: 'received',
+      header: 'Latest receipt',
+      render: (row) =>
+        row.dashboard?.latest_received_at ? (
+          <TimeDisplay received_at={row.dashboard.latest_received_at} format="compact" />
+        ) : (
+          'No receipt'
+        )
+    },
+    {
+      key: 'alerts',
+      header: 'Open / ack',
       align: 'center',
       render: (row) => (
-        <span
-          style={{
-            fontWeight: row.pending_assessments > 0 ? 800 : 500,
-            padding: '2px 8px',
-            backgroundColor: row.pending_assessments > 0 ? 'rgba(255, 255, 8, 0.4)' : '#F5F5F5',
-            border: '1px solid #000000',
-            fontSize: '11px'
-          }}
-        >
-          {row.pending_assessments}
+        <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>
+          {row.openAlerts.length} / {row.acknowledgedAlerts.length}
         </span>
       )
     },
     {
       key: 'actions',
-      header: 'Open Actions',
+      header: 'Pending actions',
       align: 'center',
-      render: (row) => (
-        <span
-          style={{
-            fontWeight: row.open_actions > 0 ? 800 : 500,
-            padding: '2px 8px',
-            backgroundColor: row.open_actions > 0 ? '#FFFF08' : '#F5F5F5',
-            border: '1px solid #000000',
-            fontSize: '11px'
-          }}
-        >
-          {row.open_actions}
-        </span>
-      )
+      render: (row) => (row.dashboard ? row.dashboard.pending_action_count : '—')
     },
     {
-      key: 'freshness',
-      header: 'Freshness',
-      render: (row) => <FreshnessBadge freshness={row.data_freshness} />
-    },
-    {
-      key: 'comm',
-      header: 'Comm Link',
-      render: (row) => <CommStateBadge state={row.communication_status} />
-    },
-    {
-      key: 'action',
-      header: '',
-      align: 'right',
-      render: (row) => (
-        <PrimaryButton
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`/crew/${row.astronaut_id}`);
-          }}
-        >
-          OPEN PROFILE →
-        </PrimaryButton>
-      )
+      key: 'error',
+      header: 'Payload',
+      render: (row) =>
+        row.error ? (
+          <span
+            style={{ fontSize: '10px', fontWeight: 700 }}
+            title={`${row.error.code}: ${row.error.message}`}
+          >
+            ERROR
+          </span>
+        ) : (
+          <span style={{ fontSize: '10px' }}>COMPLETE</span>
+        )
     }
   ];
 
   return (
-    <div>
-      {/* Title & Filter Bar */}
-      <div
-        style={{
-          borderBottom: '2px solid #000000',
-          paddingBottom: '16px',
-          marginBottom: '20px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-          <span
-            style={{
-              fontSize: '10px',
-              fontWeight: 800,
-              letterSpacing: '0.08em',
-              backgroundColor: '#000000',
-              color: '#FFFFFF',
-              padding: '2px 6px',
-              textTransform: 'uppercase'
-            }}
-          >
-            FLIGHT PERSONNEL DIRECTORY
-          </span>
-          <SyntheticTag compact />
-        </div>
-        <h1
-          style={{
-            fontSize: '24px',
-            fontWeight: 900,
-            letterSpacing: '0.03em',
-            textTransform: 'uppercase',
-            margin: 0
-          }}
-        >
-          Crew Health Roster
-        </h1>
-        <p style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', margin: '4px 0 0 0' }}>
-          Select an astronaut to inspect synchronized physiological time series, domain assessments, and medical follow-up protocols.
-        </p>
-      </div>
-
-      {/* Search and Filters Controls */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '12px',
-          marginBottom: '20px',
-          alignItems: 'center',
-          flexWrap: 'wrap'
-        }}
-      >
-        <div style={{ position: 'relative', width: '320px' }}>
-          <input
-            type="text"
-            placeholder="Search by name, callsign, or crew role..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px 8px 34px',
-              border: '1px solid #000000',
-              fontSize: '12px'
-            }}
-          />
-          <div
-            style={{
-              position: 'absolute',
-              left: '10px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'rgba(0,0,0,0.5)'
-            }}
-          >
-            <IconSearch size={14} />
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>Filter:</span>
-          {['all', 'active', 'pending'].map((filterKey) => (
-            <button
-              key={filterKey}
-              onClick={() => setStatusFilter(filterKey)}
-              style={{
-                padding: '6px 10px',
-                border: '1px solid #000000',
-                backgroundColor: statusFilter === filterKey ? '#FFFF08' : '#FFFFFF',
-                color: '#000000',
-                fontWeight: statusFilter === filterKey ? 700 : 500,
-                fontSize: '11px',
-                textTransform: 'uppercase',
-                cursor: 'pointer'
-              }}
-            >
-              {filterKey === 'all' ? 'All Crew' : filterKey === 'active' ? 'Live Telemetry' : 'Action Required'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Roster Table */}
-      <DataTable
-        columns={columns}
-        data={filteredCrew}
-        keyField="astronaut_id"
-        onRowClick={(row) => navigate(`/crew/${row.astronaut_id}`)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <PageHeader
+        eyebrow="Crew"
+        title="Crew Roster"
+        description={
+          mission
+            ? `Enrolled crew for ${mission.mission_code}. Freshness and assessment states are read from each crew member's dashboard payload.`
+            : 'Crew records in the authenticated mission scope.'
+        }
+        actions={
+          <SecondaryButton size="sm" onClick={crew.refetch} icon={<IconRefresh size={12} />}>
+            Reload
+          </SecondaryButton>
+        }
       />
+
+      {missionError && <ErrorNotice title="Mission scope" message={missionError} />}
+      {crewError && <ErrorNotice title="Crew roster" message={crewError} />}
+      {crew.error && <ErrorNotice title="Crew roster" message={crew.error.message} details={crew.error.details} />}
+
+      <Panel title="Filter" bodyStyle={{ padding: '10px 12px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: '1 1 260px' }}>
+            <IconSearch size={14} />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Name or astronaut code"
+              style={{ flex: 1, padding: '6px 8px', border: '1px solid #000000', fontSize: '12px' }}
+            />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px' }}>
+            Integrated status
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              style={{ padding: '6px 8px', border: '1px solid #000000', fontSize: '11px' }}
+            >
+              <option value="all">All</option>
+              <option value="normal">Normal</option>
+              <option value="monitor">Monitor</option>
+              <option value="attention">Attention</option>
+              <option value="urgent">Urgent</option>
+              <option value="insufficient_data">Insufficient data</option>
+            </select>
+          </label>
+          <span style={{ fontSize: '10px', marginLeft: 'auto' }}>
+            {filtered.length} of {rows.length} record(s) shown
+            {!missionId ? ' · no mission scope' : ''}
+          </span>
+        </div>
+      </Panel>
+
+      <Panel title="Crew directory" subtitle="Click a row to open the crew workspace">
+        {crew.loading ? (
+          <LoadingState height={180} message="Loading crew records..." />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title="No crew records"
+            description={
+              crewError
+                ? 'The Ground API did not grant this identity access to the crew roster. See the notice above; no cached or synthetic crew records are substituted.'
+                : "The Ground API returned no astronauts for this identity's mission scope."
+            }
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyField={(row) => row.astronaut.astronaut_id}
+            selectedRowKey={selectedAstronautId ?? undefined}
+            onRowClick={(row) => {
+              selectAstronaut(row.astronaut.astronaut_id);
+              navigate(`/crew/${row.astronaut.astronaut_id}`);
+            }}
+            emptyMessage="No crew member matches the current filters."
+          />
+        )}
+      </Panel>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <PrimaryButton
+          size="sm"
+          disabled={!selectedAstronautId}
+          onClick={() => selectedAstronautId && navigate(`/crew/${selectedAstronautId}`)}
+        >
+          Open selected crew workspace
+        </PrimaryButton>
+        <SecondaryButton size="sm" onClick={() => navigate('/alerts')}>
+          Review alerts & actions
+        </SecondaryButton>
+      </div>
     </div>
   );
 };
+
 export default CrewRoster;

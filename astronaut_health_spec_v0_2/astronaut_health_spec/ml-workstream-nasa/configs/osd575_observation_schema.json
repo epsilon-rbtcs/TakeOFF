@@ -1,0 +1,40 @@
+{
+  "schema_name": "osd575_product_observation",
+  "schema_version": "1.0.0",
+  "description": "Retrospective research biomarker observation normalized from NASA OSD-575.",
+  "required_fields": [
+    "observation_id",
+    "observation_type",
+    "data_origin",
+    "source_system",
+    "study_id",
+    "subject_id",
+    "timepoint_text",
+    "health_domain",
+    "assay_family",
+    "metric_code",
+    "analyte",
+    "value",
+    "unit",
+    "source_version",
+    "source_file",
+    "source_table",
+    "upstream_measurement_record_id",
+    "is_live_telemetry"
+  ],
+  "field_semantics": {
+    "observation_id": "Stable identifier derived from study and upstream source-row provenance.",
+    "subject_id": "Study pseudonymous crew identifier as present in source data.",
+    "timepoint_text": "Exact source visit/timepoint label; not a calendar timestamp.",
+    "measured_at_utc": "Null unless an explicit timestamp exists in the source; this notebook does not synthesize one.",
+    "health_domain": "Conservative assay-family grouping: metabolic, immune, cardiovascular, or unclassified.",
+    "value": "Numeric value parsed by Notebook 03; preserve unit alongside it.",
+    "unit": "Original unit from source; not inferred.",
+    "clinical_interpretation": "Always null in this export; no diagnosis or clinical interpretation is generated.",
+    "clinical_threshold_applied": "Always false.",
+    "is_live_telemetry": "Always false; these are retrospective research observations."
+  },
+  "source_study": "OSD-575",
+  "source_selection": "Reads only osd575_measurements_long_primary.csv produced by Notebook 03.",
+  "generated_at_utc": "2026-11-15T08:18:37.416622+00:00"
+}

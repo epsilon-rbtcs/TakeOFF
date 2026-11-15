@@ -87,10 +87,19 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const chartW = svgWidth - padLeft - padRight;
   const chartH = svgHeight - padTop - padBottom;
 
-  // Coordinate projections
+  // Coordinate projections. X positions follow the recorded timestamps so that
+  // unequal sampling intervals and data gaps remain visible.
+  const timestamps = data.map((point) => new Date(point.timestamp).getTime());
+  const minTime = Math.min(...timestamps);
+  const maxTime = Math.max(...timestamps);
+  const timeSpan = maxTime - minTime;
+
   const getX = (index: number) => {
     if (data.length <= 1) return padLeft + chartW / 2;
-    return padLeft + (index / (data.length - 1)) * chartW;
+    if (!isFinite(timeSpan) || timeSpan <= 0) {
+      return padLeft + (index / (data.length - 1)) * chartW;
+    }
+    return padLeft + ((timestamps[index] - minTime) / timeSpan) * chartW;
   };
 
   const getY = (val: number) => {
@@ -267,7 +276,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               </text>
               {data.length > 2 && (
                 <text
-                  x={padLeft + chartW / 2}
+                  x={getX(Math.floor(data.length / 2))}
                   y={svgHeight - 6}
                   textAnchor="middle"
                   fontSize="9"

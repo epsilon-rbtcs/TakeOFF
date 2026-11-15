@@ -167,6 +167,7 @@ export const FreshnessBadge: React.FC<{ freshness: DataFreshness } & BadgeProps>
   const isStale = freshness === 'stale';
   const isUnavailable = freshness === 'unavailable';
   const isCurrent = freshness === 'current';
+  const isDelayed = freshness === 'delayed';
 
   return (
     <span
@@ -179,7 +180,13 @@ export const FreshnessBadge: React.FC<{ freshness: DataFreshness } & BadgeProps>
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
         border: isStale || isUnavailable ? '1px dashed #000000' : '1px solid #000000',
-        backgroundColor: isCurrent ? 'rgba(255, 255, 8, 0.25)' : isStale ? '#E5E5E5' : '#FFFFFF',
+        backgroundColor: isCurrent
+          ? 'rgba(255, 255, 8, 0.25)'
+          : isDelayed
+          ? 'rgba(255, 255, 8, 0.12)'
+          : isStale
+          ? '#E5E5E5'
+          : '#FFFFFF',
         color: '#000000',
         borderRadius: '0px',
         ...style
@@ -187,6 +194,8 @@ export const FreshnessBadge: React.FC<{ freshness: DataFreshness } & BadgeProps>
     >
       {freshness === 'current'
         ? 'FRESH (<1h)'
+        : isDelayed
+        ? 'DELAYED (WITHIN THRESHOLD)'
         : freshness === 'recent'
         ? 'RECENT (1–4h)'
         : freshness === 'stale'

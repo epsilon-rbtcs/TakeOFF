@@ -14,14 +14,15 @@ SERVICE_NAME = "crew-health-ground-api"
 SERVICE_VERSION = "0.3.0"
 
 
-def _payload(database: str) -> dict:
+def _payload(database: str, schema: str = "present") -> dict:
     return {
-        "status": "ok" if database == "connected" else "degraded",
+        "status": "ok" if database == "connected" and schema == "present" else "degraded",
         "service": SERVICE_NAME,
         "version": SERVICE_VERSION,
         "environment": settings.app_env,
         "database": database,
-        "demo_authentication": True,
+        "schema": schema,
+        "demo_authentication": settings.demo_seed_enabled and not settings.is_production,
         "simulated_communications": True,
         "medical_certification": False,
     }
@@ -36,6 +37,17 @@ def _database_state() -> str:
         return "unavailable"
 
 
+def _schema_state() -> str:
+    try:
+        with engine.connect() as connection:
+            present = connection.execute(
+                text("SELECT to_regclass('public.missions') IS NOT NULL")
+            ).scalar()
+        return "present" if present else "missing"
+    except Exception:  # pragma: no cover - infrastructure failure
+        return "unknown"
+
+
 @router.get("/health")
 def health():
     state = _database_state()
@@ -46,4 +58,10 @@ def health():
 
 @router.get("/ready")
 def ready():
-    return health()
+    state = _database_state()
+    if state != "connected":
+        return JSONResponse(status_code=503, content=_payload(state))
+    schema = _schema_state()
+    if schema != "present":
+        return JSONResponse(status_code=503, content=_payload(state, schema))
+    return _payload(state, schema)

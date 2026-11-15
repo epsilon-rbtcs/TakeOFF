@@ -1,5 +1,6 @@
-// Ground Health Console — Main Entry Point
-// React 18, React Router v7 / v6, Auth and Data Providers
+// Ground Health Console — application entry point
+// Routes mirror the operational navigation. Legacy `/sync` and `/environment`
+// URLs redirect to their current locations so bookmarks keep working.
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -16,7 +17,8 @@ import HealthAssessments from './pages/HealthAssessments';
 import AlertsActionCenter from './pages/AlertsActionCenter';
 import CommunicationSync from './pages/CommunicationSync';
 import Messages from './pages/Messages';
-import EnvironmentalRadiation from './pages/EnvironmentalRadiation';
+import Audit from './pages/Audit';
+import DomainWorkspace from './pages/DomainWorkspace';
 import './styles.css';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -47,52 +49,51 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
   return <>{children}</>;
 };
 
-const AppRoutes: React.FC = () => {
-  return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          <AuthLayout>
-            <Login />
-          </AuthLayout>
-        }
-      />
+const AppRoutes: React.FC = () => (
+  <Routes>
+    <Route
+      path="/login"
+      element={
+        <AuthLayout>
+          <Login />
+        </AuthLayout>
+      }
+    />
 
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<MissionOverview />} />
-        <Route path="crew" element={<CrewRoster />} />
-        <Route path="crew/:astronautId" element={<AstronautProfile />} />
-        <Route path="assessments" element={<HealthAssessments />} />
-        <Route path="alerts" element={<AlertsActionCenter />} />
-        <Route path="sync" element={<CommunicationSync />} />
-        <Route path="messages" element={<Messages />} />
-        <Route path="environment" element={<EnvironmentalRadiation />} />
-      </Route>
+    <Route
+      path="/"
+      element={
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<MissionOverview />} />
+      <Route path="crew" element={<CrewRoster />} />
+      <Route path="crew/:astronautId" element={<AstronautProfile />} />
+      <Route path="domains/:domainKey" element={<DomainWorkspace />} />
+      <Route path="alerts" element={<AlertsActionCenter />} />
+      <Route path="communications" element={<CommunicationSync />} />
+      <Route path="sync" element={<Navigate to="/communications" replace />} />
+      <Route path="environment" element={<Navigate to="/domains/environmental" replace />} />
+      <Route path="audit" element={<Audit />} />
+      <Route path="assessments" element={<HealthAssessments />} />
+      <Route path="messages" element={<Messages />} />
+    </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-};
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>
+);
 
-const App: React.FC = () => {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <DataProvider>
-          <AppRoutes />
-        </DataProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  );
-};
+const App: React.FC = () => (
+  <BrowserRouter>
+    <AuthProvider>
+      <DataProvider>
+        <AppRoutes />
+      </DataProvider>
+    </AuthProvider>
+  </BrowserRouter>
+);
 
 const rootEl = document.getElementById('root');
 if (rootEl) {

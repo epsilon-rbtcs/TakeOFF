@@ -59,6 +59,20 @@ def test_invalid_demo_credentials_are_rejected(client):
     assert unknown.json()["error"]["code"] == "TOKEN_INVALID"
 
 
+def test_demo_identity_exchange_can_be_disabled(client):
+    original = settings.demo_seed_enabled
+    object.__setattr__(settings, "demo_seed_enabled", False)
+    try:
+        response = client.post(
+            f"{API}/auth/demo-token",
+            json={"username": "astronaut", "password": "crew-demo"},
+        )
+    finally:
+        object.__setattr__(settings, "demo_seed_enabled", original)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "DEMO_AUTH_DISABLED"
+
+
 def test_missing_and_malformed_bearer_tokens(client):
     missing = client.get(f"{API}/dashboard/summary")
     assert missing.status_code == 401

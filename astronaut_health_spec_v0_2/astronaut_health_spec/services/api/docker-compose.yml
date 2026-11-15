@@ -1,14 +1,14 @@
-# PostgreSQL for the Ground API (local development).
+# Local/deployment Compose for the single Ground API application and PostgreSQL.
 #
-#   docker compose up -d postgres
-#   # then, from services/api:
-#   alembic upgrade head
-#   python -m app.cli seed
-#   python -m app.cli serve --reload
+# Demo/demo database path (schema + deterministic synthetic seed on first boot):
+#   docker compose up --build
 #
-# The API itself runs on the host so reloads and tests stay fast; only the
-# database is containerised.  Credentials here are local-only and must not be
-# reused in a real deployment.
+# Production-style path (no demo users, no automatic seed):
+#   APP_ENV=production JWT_SECRET=... DEMO_SEED_ENABLED=false \
+#   AUTO_MIGRATE=false docker compose up -d
+#   docker compose run --rm api alembic upgrade head
+#
+# The credentials below are local-only. Never reuse them in a real deployment.
 
 services:
   postgres:
@@ -16,7 +16,7 @@ services:
     container_name: ground-api-postgres
     environment:
       POSTGRES_USER: ground
-      POSTGRES_PASSWORD: ground
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ground}
       POSTGRES_DB: astronaut_health
     ports:
       - "5432:5432"
@@ -27,6 +27,56 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: services/api/Dockerfile
+    container_name: ground-api
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+psycopg://ground:${POSTGRES_PASSWORD:-ground}@postgres:5432/astronaut_health
+      # Local development may leave this empty: the app then generates an
+      # ephemeral per-process secret and demo tokens expire on restart.
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_EXPIRES_SECONDS: ${JWT_EXPIRES_SECONDS:-3600}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      DEMO_SEED_ENABLED: ${DEMO_SEED_ENABLED:-true}
+      AUTO_MIGRATE: ${AUTO_MIGRATE:-true}
+      AUTO_APPLY_SCHEMA: "false"
+      SEED_ON_STARTUP: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Fresh volume: apply the Alembic revision, seed synthetic demo data, serve.
+    # Restarts: both commands are idempotent; disable seeding with DEMO_SEED_ENABLED=false.
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ "${AUTO_MIGRATE:-true}" = "true" ]; then
+          alembic upgrade head
+        fi
+        if [ "${DEMO_SEED_ENABLED:-true}" = "true" ]; then
+          python -m app.cli seed
+        fi
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request
+          urllib.request.urlopen("http://127.0.0.1:8000/api/v1/ready", timeout=4)
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 
 volumes:

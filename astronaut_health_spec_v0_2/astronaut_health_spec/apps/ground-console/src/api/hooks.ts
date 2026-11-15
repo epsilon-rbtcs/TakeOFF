@@ -1,467 +1,596 @@
-// Ground Health Console — Data Hooks
-// Provides unified data fetching that transparently switches between live FastAPI and synthetic mock datasets
+// Ground Health Console — data hooks
+// Every hook reads the Ground API. There are no synthetic fallbacks: a failed
+// request produces an explicit error and an empty dataset.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiClient, newIdempotencyKey } from './client';
 import { useData } from '../context/DataContext';
-import { apiClient } from './client';
-import {
-  mockAstronauts,
-  mockCrewSummary,
-  mockMissionSummary,
-  mockRecentActivity,
-  mockAttentionItems,
-  mockObservations,
-  mockAssessments,
-  mockAlerts,
-  mockActions,
-  mockCommunicationStatus,
-  mockSyncBatches,
-  mockMessages,
-  mockEnvironmentalReadings,
-  mockRadiationReadings,
-  mockBaselines,
-  DEMO_ASTRONAUT_ID,
-  DEMO_MISSION_ID
-} from '../mock-data';
-import {
-  DashboardSummary,
-  Astronaut,
-  AstronautSummary,
-  Observation,
-  ModuleAssessment,
-  Alert,
-  FollowUpAction,
-  CommunicationStatus,
-  SyncBatch,
-  Message,
-  EnvironmentalReading,
-  RadiationReading,
-  BaselineReference,
-  CommunicationState
-} from '../types';
+import { useAuth } from '../context/AuthContext';
+import { DOMAINS, definitionsForDomain } from './domains';
+import type { DomainDescriptor } from './domains';
+import type {
+  ActionCreateInput,
+  ActionDto,
+  AlertDto,
+  AlertEventDto,
+  AnalysisRunDto,
+  ApiFailure,
+  ApiResult,
+  AssessmentDetailDto,
+  AssessmentSummaryDto,
+  AstronautDto,
+  AuditEventDto,
+  BaselineDto,
+  CatalogueDto,
+  CommunicationStatusDto,
+  DashboardDto,
+  MeasurementDefinitionDto,
+  MessageDto,
+  MessageEventTypeDto,
+  MessageTypeDto,
+  ObservationDto,
+  SyncStatusDto
+} from './types';
 
-// In-memory mutable states for mock mode interactive state changes
-let inMemoryAlerts = [...mockAlerts];
-let inMemoryActions = [...mockActions];
-let inMemoryMessages = [...mockMessages];
-let inMemoryCommStatus = { ...mockCommunicationStatus };
+interface QueryState<T> {
+  data: T | null;
+  error: ApiFailure | null;
+  loading: boolean;
+}
 
-// --- 1. Dashboard Hook ---
-export function useDashboard() {
-  const { isMock } = useData();
-  const [data, setData] = useState<DashboardSummary | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchDashboard = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    if (isMock) {
-      // Assemble mock dashboard summary
-      setData({
-        mission: mockMissionSummary,
-        crew: mockCrewSummary,
-        recent_activity: mockRecentActivity,
-        attention_items: mockAttentionItems
-      });
-      setLoading(false);
-      return;
-    }
-
-    // Live API mode
-    try {
-      const res = await apiClient.getDashboardSummary(DEMO_ASTRONAUT_ID, DEMO_MISSION_ID);
-      if (res.error) {
-        setError(res.error);
-        // Graceful fallback to mock data with warning
-        setData({
-          mission: mockMissionSummary,
-          crew: mockCrewSummary,
-          recent_activity: mockRecentActivity,
-          attention_items: mockAttentionItems
-        });
-      } else if (res.data) {
-        // Map backend dashboard summary response to DashboardSummary
-        const raw = res.data;
-        const mappedCrew: AstronautSummary[] = [
-          {
-            astronaut_id: raw.astronaut_id || DEMO_ASTRONAUT_ID,
-            name: 'Cmdr. Elena Vasquez',
-            callsign: 'Vanguard',
-            role_in_crew: 'Mission Commander',
-            mission_id: raw.mission_id || DEMO_MISSION_ID,
-            last_health_update: raw.latest_received_at || 'Never',
-            latest_measurement_at: raw.latest_measured_at || 'Never',
-            pending_assessments: raw.assessments?.length || 0,
-            open_actions: 1,
-            data_freshness: raw.freshness || 'unknown',
-            communication_status: raw.communication?.state || 'LIVE'
-          }
-        ];
-
-        setData({
-          mission: {
-            ...mockMissionSummary,
-            last_sync: raw.latest_received_at || mockMissionSummary.last_sync,
-            communication_state: raw.communication?.state || 'LIVE'
-          },
-          crew: mappedCrew,
-          recent_activity: mockRecentActivity,
-          attention_items: mockAttentionItems
-        });
-      }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load dashboard from API');
-      setData({
-        mission: mockMissionSummary,
-        crew: mockCrewSummary,
-        recent_activity: mockRecentActivity,
-        attention_items: mockAttentionItems
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [isMock]);
+function useQuery<T>(key: string | null, loader: () => Promise<ApiResult<T>>) {
+  const [state, setState] = useState<QueryState<T>>({
+    data: null,
+    error: null,
+    loading: Boolean(key)
+  });
+  const [version, setVersion] = useState<number>(0);
+  const loaderRef = useRef(loader);
+  loaderRef.current = loader;
 
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
-
-  return { data, loading, error, refetch: fetchDashboard };
-}
-
-// --- 2. Crew Roster Hook ---
-export function useCrewRoster() {
-  const { isMock } = useData();
-  const [crew, setCrew] = useState<Astronaut[]>(mockAstronauts);
-  const [summary, setSummary] = useState<AstronautSummary[]>(mockCrewSummary);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  return { crew, summary, loading };
-}
-
-// --- 3. Astronaut Profile & Observations Hook ---
-export function useAstronautProfile(astronautId: string) {
-  const { isMock } = useData();
-  const [astronaut, setAstronaut] = useState<Astronaut | null>(null);
-  const [observations, setObservations] = useState<Observation[]>([]);
-  const [assessments, setAssessments] = useState<ModuleAssessment[]>([]);
-  const [baselines, setBaselines] = useState<BaselineReference[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchProfile = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    const foundAstronaut =
-      mockAstronauts.find((a) => a.astronaut_id === astronautId) || mockAstronauts[0];
-    setAstronaut(foundAstronaut);
-
-    if (isMock) {
-      const astronautObs = mockObservations.filter((o) => o.astronaut_id === astronautId);
-      const astronautAsm = mockAssessments.filter((a) => a.astronaut_id === astronautId);
-      const astronautBase = mockBaselines.filter((b) => b.astronaut_id === astronautId);
-
-      setObservations(astronautObs);
-      setAssessments(astronautAsm);
-      setBaselines(astronautBase);
-      setLoading(false);
+    if (!key) {
+      setState({ data: null, error: null, loading: false });
       return;
     }
-
-    // Try API
-    try {
-      const res = await apiClient.getObservations(astronautId, DEMO_MISSION_ID);
-      if (res.data) {
-        setObservations(res.data);
-      } else {
-        setObservations(mockObservations.filter((o) => o.astronaut_id === astronautId));
-      }
-
-      const asmRes = await apiClient.getAssessments(astronautId, DEMO_MISSION_ID);
-      if (asmRes.data) {
-        setAssessments(asmRes.data);
-      } else {
-        setAssessments(mockAssessments.filter((a) => a.astronaut_id === astronautId));
-      }
-
-      setBaselines(mockBaselines.filter((b) => b.astronaut_id === astronautId));
-    } catch {
-      setObservations(mockObservations.filter((o) => o.astronaut_id === astronautId));
-      setAssessments(mockAssessments.filter((a) => a.astronaut_id === astronautId));
-      setBaselines(mockBaselines.filter((b) => b.astronaut_id === astronautId));
-    } finally {
-      setLoading(false);
-    }
-  }, [astronautId, isMock]);
-
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
-
-  return { astronaut, observations, assessments, baselines, loading, error, refetch: fetchProfile };
-}
-
-// --- 4. Assessments Hook ---
-export function useAssessments(filters?: { domain?: string; status?: string; astronautId?: string }) {
-  const { isMock } = useData();
-  const [assessments, setAssessments] = useState<ModuleAssessment[]>(mockAssessments);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  const filterAssessments = useCallback(() => {
-    return mockAssessments.filter((asm) => {
-      if (filters?.astronautId && filters.astronautId !== 'all' && asm.astronaut_id !== filters.astronautId) {
-        return false;
-      }
-      if (filters?.domain && filters.domain !== 'all' && asm.health_domain !== filters.domain) {
-        return false;
-      }
-      if (filters?.status && filters.status !== 'all' && asm.status !== filters.status) {
-        return false;
-      }
-      return true;
+    let cancelled = false;
+    setState((current) => ({ ...current, loading: true }));
+    loaderRef.current().then((result) => {
+      if (cancelled) return;
+      setState({ data: result.data, error: result.error, loading: false });
     });
-  }, [filters]);
-
-  useEffect(() => {
-    setAssessments(filterAssessments());
-  }, [filterAssessments, isMock]);
-
-  return { assessments, loading, refetch: () => setAssessments(filterAssessments()) };
-}
-
-// --- 5. Alerts & Action Centre Hook ---
-export function useAlertsAndActions(filters?: { status?: string; severity?: string; domain?: string }) {
-  const { isMock } = useData();
-  const [alerts, setAlerts] = useState<Alert[]>(inMemoryAlerts);
-  const [actions, setActions] = useState<FollowUpAction[]>(inMemoryActions);
-
-  const refreshData = useCallback(() => {
-    let filteredAlerts = [...inMemoryAlerts];
-    if (filters?.status && filters.status !== 'all') {
-      filteredAlerts = filteredAlerts.filter((a) => a.status === filters.status);
-    }
-    if (filters?.severity && filters.severity !== 'all') {
-      filteredAlerts = filteredAlerts.filter((a) => a.severity === filters.severity);
-    }
-    if (filters?.domain && filters.domain !== 'all') {
-      filteredAlerts = filteredAlerts.filter((a) => a.health_domain === filters.domain);
-    }
-    setAlerts(filteredAlerts);
-    setActions([...inMemoryActions]);
-  }, [filters]);
-
-  useEffect(() => {
-    refreshData();
-  }, [refreshData, isMock]);
-
-  // Interactive state update handlers
-  const acknowledgeAlert = async (alertId: string, actor: string, note?: string) => {
-    const alert = inMemoryAlerts.find((a) => a.alert_id === alertId);
-    if (alert) {
-      alert.status = 'acknowledged';
-      alert.events.push({
-        event_id: `ae-${Date.now()}`,
-        alert_id: alertId,
-        action: 'Alert Acknowledged by medical personnel',
-        actor: actor || 'Medical Officer',
-        note: note || undefined,
-        timestamp: new Date().toISOString()
-      });
-      inMemoryAlerts = [...inMemoryAlerts];
-      refreshData();
-    }
-  };
-
-  const updateAlertStatus = async (
-    alertId: string,
-    newStatus: Alert['status'],
-    actor: string,
-    note?: string
-  ) => {
-    const alert = inMemoryAlerts.find((a) => a.alert_id === alertId);
-    if (alert) {
-      alert.status = newStatus;
-      alert.events.push({
-        event_id: `ae-${Date.now()}`,
-        alert_id: alertId,
-        action: `Status transitioned to ${newStatus.toUpperCase()}`,
-        actor: actor || 'Medical Officer',
-        note: note || undefined,
-        timestamp: new Date().toISOString()
-      });
-      inMemoryAlerts = [...inMemoryAlerts];
-      refreshData();
-    }
-  };
-
-  const addFollowUpAction = async (newAction: Omit<FollowUpAction, 'action_id' | 'events' | 'created_at'>) => {
-    const createdAction: FollowUpAction = {
-      ...newAction,
-      action_id: `act-${Date.now()}`,
-      created_at: new Date().toISOString(),
-      events: [
-        {
-          event_id: `act-e-${Date.now()}`,
-          action_id: `act-${Date.now()}`,
-          action_type: 'Action Created',
-          actor: newAction.assigned_to || 'Medical Officer',
-          note: 'Initial protocol assignment',
-          timestamp: new Date().toISOString()
-        }
-      ]
+    return () => {
+      cancelled = true;
     };
-    inMemoryActions = [createdAction, ...inMemoryActions];
-    refreshData();
-  };
+  }, [key, version]);
 
-  const updateActionStatus = async (
-    actionId: string,
-    newStatus: FollowUpAction['status'],
-    actor: string,
-    note?: string
-  ) => {
-    const action = inMemoryActions.find((a) => a.action_id === actionId);
-    if (action) {
-      action.status = newStatus;
-      action.events.push({
-        event_id: `act-e-${Date.now()}`,
-        action_id: actionId,
-        action_type: `Status updated to ${newStatus.toUpperCase()}`,
-        actor: actor || 'Medical Officer',
-        note,
-        timestamp: new Date().toISOString()
+  const refetch = useCallback(() => setVersion((value) => value + 1), []);
+  return { ...state, refetch };
+}
+
+// --- Single-resource hooks ------------------------------------------------
+
+export function useDashboard(astronautId: string | null, missionId: string | null) {
+  return useQuery<DashboardDto>(
+    astronautId && missionId ? `dashboard:${missionId}:${astronautId}` : null,
+    () => apiClient.getDashboard(astronautId as string, missionId as string)
+  );
+}
+
+export function useCatalogue(missionId: string | null) {
+  return useQuery<CatalogueDto>(
+    missionId ? `catalogue:${missionId}` : null,
+    () => apiClient.getCatalogue(missionId as string)
+  );
+}
+
+export function useRecentObservations(
+  astronautId: string | null,
+  missionId: string | null,
+  limit = 20
+) {
+  return useQuery<ObservationDto[]>(
+    astronautId && missionId ? `recent-observations:${missionId}:${astronautId}:${limit}` : null,
+    async () => {
+      const result = await apiClient.listObservations({
+        astronautId: astronautId as string,
+        missionId: missionId as string,
+        limit
       });
-      inMemoryActions = [...inMemoryActions];
-      refreshData();
+      if (result.error) return { data: null, error: result.error, status: result.status };
+      return { data: result.data?.items ?? [], error: null, status: result.status };
     }
-  };
-
-  return {
-    alerts,
-    actions,
-    acknowledgeAlert,
-    updateAlertStatus,
-    addFollowUpAction,
-    updateActionStatus,
-    refetch: refreshData
-  };
+  );
 }
 
-// --- 6. Communication & Sync Hook ---
-export function useCommunicationAndSync() {
-  const { isMock } = useData();
-  const [commStatus, setCommStatus] = useState<CommunicationStatus>(inMemoryCommStatus);
-  const [batches, setBatches] = useState<SyncBatch[]>(mockSyncBatches);
-  const [loading, setLoading] = useState<boolean>(false);
+export function useAstronaut(
+  astronautId: string | null,
+  missionId: string | null
+) {
+  return useQuery<AstronautDto>(
+    astronautId && missionId ? `astronaut:${astronautId}` : null,
+    () => apiClient.getAstronaut(astronautId as string)
+  );
+}
 
-  // Simulation handler for demonstration
-  const simulateCommunicationState = (state: CommunicationState) => {
-    inMemoryCommStatus = {
-      ...inMemoryCommStatus,
-      state,
-      observed_at: new Date().toISOString()
+// --- Mission overview -----------------------------------------------------
+
+export interface CrewOverviewRow {
+  astronaut: AstronautDto;
+  dashboard: DashboardDto | null;
+  openAlerts: AlertDto[];
+  acknowledgedAlerts: AlertDto[];
+  error: ApiFailure | null;
+}
+
+export interface CrewOverviewData {
+  rows: CrewOverviewRow[];
+  generatedAt: string;
+}
+
+export function useCrewOverview() {
+  const { astronauts, missionId } = useData();
+  const key =
+    missionId && astronauts.length > 0
+      ? `crew-overview:${missionId}:${astronauts.map((item) => item.astronaut_id).join(',')}`
+      : null;
+
+  return useQuery<CrewOverviewData>(key, async () => {
+    const rows = await Promise.all(
+      astronauts.map(async (astronaut): Promise<CrewOverviewRow> => {
+        const [dashboard, alerts] = await Promise.all([
+          apiClient.getDashboard(astronaut.astronaut_id, missionId as string),
+          apiClient.listAlerts({
+            astronautId: astronaut.astronaut_id,
+            missionId: missionId as string,
+            limit: 200
+          })
+        ]);
+        const alertItems = alerts.data ?? [];
+        return {
+          astronaut,
+          dashboard: dashboard.data,
+          openAlerts: alertItems.filter((item) => item.status === 'open'),
+          acknowledgedAlerts: alertItems.filter((item) => item.status === 'acknowledged'),
+          error: dashboard.error ?? alerts.error
+        };
+      })
+    );
+    return {
+      data: { rows, generatedAt: new Date().toISOString() },
+      error: null,
+      status: 200
     };
-    setCommStatus({ ...inMemoryCommStatus });
-  };
-
-  return {
-    commStatus,
-    batches,
-    loading,
-    simulateCommunicationState
-  };
+  });
 }
 
-// --- 7. Messages Hook ---
-export function useMessages(filters?: { astronautId?: string; status?: string }) {
-  const [messages, setMessages] = useState<Message[]>(inMemoryMessages);
+// --- Astronaut workspace --------------------------------------------------
 
-  const refreshMessages = useCallback(() => {
-    let filtered = [...inMemoryMessages];
-    if (filters?.astronautId && filters.astronautId !== 'all') {
-      filtered = filtered.filter((m) => m.astronaut_id === filters.astronautId);
-    }
-    if (filters?.status && filters.status !== 'all') {
-      filtered = filtered.filter((m) => m.status === filters.status);
-    }
-    setMessages(filtered);
-  }, [filters]);
+export interface WorkspaceData {
+  dashboard: DashboardDto | null;
+  observations: ObservationDto[];
+  assessments: AssessmentSummaryDto[];
+  baselines: BaselineDto[];
+  analysisRuns: AnalysisRunDto[];
+  alerts: AlertDto[];
+  actions: ActionDto[];
+  catalogue: CatalogueDto | null;
+  warnings: string[];
+}
 
-  useEffect(() => {
-    refreshMessages();
-  }, [refreshMessages]);
+export function useAstronautWorkspace(astronautId: string | null, missionId: string | null) {
+  return useQuery<WorkspaceData>(
+    astronautId && missionId ? `workspace:${missionId}:${astronautId}` : null,
+    async () => {
+      const [dashboard, observations, assessments, baselines, runs, alerts, actions, catalogue] =
+        await Promise.all([
+          apiClient.getDashboard(astronautId as string, missionId as string),
+          apiClient.listObservations({
+            astronautId: astronautId as string,
+            missionId: missionId as string,
+            limit: 500
+          }),
+          apiClient.listAssessments(astronautId as string, missionId as string),
+          apiClient.listBaselines(astronautId as string, missionId as string),
+          apiClient.listAnalysisRuns(astronautId as string, missionId as string),
+          apiClient.listAlerts({
+            astronautId: astronautId as string,
+            missionId: missionId as string,
+            limit: 200
+          }),
+          apiClient.listActions({
+            astronautId: astronautId as string,
+            missionId: missionId as string,
+            limit: 200
+          }),
+          apiClient.getCatalogue(missionId as string)
+        ]);
 
-  const composeMessage = (newMessage: {
-    astronaut_id?: string;
-    recipient_name: string;
-    subject: string;
-    body: string;
-    priority: 'routine' | 'priority' | 'urgent';
-    protocol_reference?: string;
-  }) => {
-    const created: Message = {
-      message_id: `msg-${Date.now()}`,
-      mission_id: DEMO_MISSION_ID,
-      astronaut_id: newMessage.astronaut_id,
-      sender_id: 'user-med-01',
-      sender_role: 'medical_officer',
-      sender_name: 'Medical Officer (Ground Console)',
-      recipient_id: newMessage.astronaut_id,
-      recipient_name: newMessage.recipient_name,
-      subject: newMessage.subject,
-      body: newMessage.body,
-      priority: newMessage.priority,
-      protocol_reference: newMessage.protocol_reference,
-      status: 'sent',
-      created_at: new Date().toISOString(),
-      events: [
-        {
-          event_id: `me-${Date.now()}-1`,
-          message_id: `msg-${Date.now()}`,
-          status: 'queued',
-          timestamp: new Date().toISOString()
+      if (dashboard.error) {
+        return { data: null, error: dashboard.error, status: dashboard.status };
+      }
+
+      const warnings: string[] = [];
+      for (const [label, result] of [
+        ['observations', observations],
+        ['assessments', assessments],
+        ['baselines', baselines],
+        ['analysis runs', runs],
+        ['alerts', alerts],
+        ['recommended actions', actions],
+        ['measurement catalogue', catalogue]
+      ] as const) {
+        if (result.error) warnings.push(`${label}: ${result.error.message}`);
+      }
+
+      return {
+        data: {
+          dashboard: dashboard.data,
+          observations: observations.data?.items ?? [],
+          assessments: assessments.data ?? [],
+          baselines: baselines.data ?? [],
+          analysisRuns: runs.data ?? [],
+          alerts: alerts.data ?? [],
+          actions: actions.data ?? [],
+          catalogue: catalogue.data,
+          warnings
         },
-        {
-          event_id: `me-${Date.now()}-2`,
-          message_id: `msg-${Date.now()}`,
-          status: 'sent',
-          timestamp: new Date().toISOString()
-        }
-      ],
-      is_synthetic: true
-    };
-
-    inMemoryMessages = [created, ...inMemoryMessages];
-    refreshMessages();
-    return created;
-  };
-
-  const updateMessageStatus = (messageId: string, status: Message['status'], note?: string) => {
-    const msg = inMemoryMessages.find((m) => m.message_id === messageId);
-    if (msg) {
-      msg.status = status;
-      msg.events.push({
-        event_id: `me-${Date.now()}`,
-        message_id: messageId,
-        status,
-        note,
-        timestamp: new Date().toISOString()
-      });
-      inMemoryMessages = [...inMemoryMessages];
-      refreshMessages();
+        error: null,
+        status: 200
+      };
     }
+  );
+}
+
+// --- Domain workspace -----------------------------------------------------
+
+export interface DomainData {
+  definitions: MeasurementDefinitionDto[];
+  observations: ObservationDto[];
+  assessment: AssessmentSummaryDto | null;
+  assessmentDetail: AssessmentDetailDto | null;
+  baselines: BaselineDto[];
+  alerts: AlertDto[];
+  catalogue: CatalogueDto | null;
+  warnings: string[];
+}
+
+export function useDomainData(domain: DomainDescriptor) {
+  const { selectedAstronautId, missionId } = useData();
+
+  return useQuery<DomainData>(
+    selectedAstronautId && missionId
+      ? `domain:${domain.key}:${missionId}:${selectedAstronautId}`
+      : null,
+    async () => {
+      const [catalogue, observations, assessments, baselines, alerts] = await Promise.all([
+        apiClient.getCatalogue(missionId as string),
+        apiClient.listObservations({
+          astronautId: selectedAstronautId as string,
+          missionId: missionId as string,
+          limit: 500
+        }),
+        apiClient.listAssessments(
+          selectedAstronautId as string,
+          missionId as string,
+          domain.moduleCode
+        ),
+        apiClient.listBaselines(selectedAstronautId as string, missionId as string),
+        apiClient.listAlerts({
+          astronautId: selectedAstronautId as string,
+          missionId: missionId as string,
+          limit: 200
+        })
+      ]);
+
+      if (catalogue.error) {
+        return { data: null, error: catalogue.error, status: catalogue.status };
+      }
+
+      const definitions = catalogue.data
+        ? definitionsForDomain(catalogue.data.items, domain)
+        : [];
+      const allowedCodes = new Set(definitions.map((item) => item.code));
+      const domainObservations = (observations.data?.items ?? []).filter((item) =>
+        allowedCodes.has(item.measurement_code)
+      );
+      const domainAlerts = (alerts.data ?? []).filter(
+        (item) => item.alert_code.includes(`_${domain.moduleCode}_`)
+      );
+
+      const assessmentSummaries = assessments.data ?? [];
+      const latestAssessment = assessmentSummaries[0] ?? null;
+      let assessmentDetail: AssessmentDetailDto | null = null;
+      let assessmentDetailError: ApiFailure | null = null;
+      if (latestAssessment) {
+        const detail = await apiClient.getAssessment(latestAssessment.assessment_id);
+        assessmentDetail = detail.data;
+        assessmentDetailError = detail.error;
+      }
+
+      const warnings: string[] = [];
+      if (observations.error) warnings.push(`observations: ${observations.error.message}`);
+      if (assessments.error) warnings.push(`assessments: ${assessments.error.message}`);
+      if (baselines.error) warnings.push(`baselines: ${baselines.error.message}`);
+      if (alerts.error) warnings.push(`alerts: ${alerts.error.message}`);
+      if (assessmentDetailError) {
+        warnings.push(`assessment detail: ${assessmentDetailError.message}`);
+      }
+
+      return {
+        data: {
+          definitions,
+          observations: domainObservations,
+          assessment: latestAssessment,
+          assessmentDetail,
+          baselines: (baselines.data ?? []).filter(
+            (item) => item.measurement_code && allowedCodes.has(item.measurement_code)
+          ),
+          alerts: domainAlerts,
+          catalogue: catalogue.data,
+          warnings
+        },
+        error: null,
+        status: 200
+      };
+    }
+  );
+}
+
+// --- Alerts & actions -----------------------------------------------------
+
+export interface AlertsActionsData {
+  alerts: AlertDto[];
+  actions: ActionDto[];
+  warning: string | null;
+}
+
+export function useAlertsActions() {
+  const { selectedAstronautId, missionId } = useData();
+
+  const query = useQuery<AlertsActionsData>(
+    selectedAstronautId && missionId
+      ? `alerts-actions:${missionId}:${selectedAstronautId}`
+      : null,
+    async () => {
+      const [alerts, actions] = await Promise.all([
+        apiClient.listAlerts({
+          astronautId: selectedAstronautId as string,
+          missionId: missionId as string,
+          limit: 500
+        }),
+        apiClient.listActions({
+          astronautId: selectedAstronautId as string,
+          missionId: missionId as string,
+          limit: 500
+        })
+      ]);
+      if (alerts.error) return { data: null, error: alerts.error, status: alerts.status };
+      return {
+        data: {
+          alerts: alerts.data ?? [],
+          actions: actions.data ?? [],
+          warning: actions.error ? `recommended actions: ${actions.error.message}` : null
+        },
+        error: null,
+        status: 200
+      };
+    }
+  );
+
+  const acknowledgeAlert = useCallback(
+    async (alert: AlertDto, note?: string) =>
+      apiClient.acknowledgeAlert(alert.alert_id, {
+        expected_revision: alert.revision,
+        note
+      }),
+    []
+  );
+
+  const transitionAlert = useCallback(
+    async (alert: AlertDto, event: 'resolved' | 'dismissed', note?: string) =>
+      apiClient.createAlertEvent(alert.alert_id, {
+        event_type: event,
+        expected_revision: alert.revision,
+        note
+      }),
+    []
+  );
+
+  const createAction = useCallback(
+    async (input: ActionCreateInput) => apiClient.createAction(input),
+    []
+  );
+
+  const updateActionStatus = useCallback(
+    async (action: ActionDto, status: string, note?: string) =>
+      apiClient.updateAction(action.action_id, {
+        expected_revision: action.revision,
+        status,
+        note
+      }),
+    []
+  );
+
+  const addActionNote = useCallback(
+    async (action: ActionDto, note: string) =>
+      apiClient.updateAction(action.action_id, {
+        expected_revision: action.revision,
+        note
+      }),
+    []
+  );
+
+  return {
+    ...query,
+    acknowledgeAlert,
+    transitionAlert,
+    createAction,
+    updateActionStatus,
+    addActionNote
   };
-
-  return { messages, composeMessage, updateMessageStatus, refetch: refreshMessages };
 }
 
-// --- 8. Environmental & Radiation Hook ---
-export function useEnvironmentAndRadiation() {
-  const [environmental, setEnvironmental] = useState<EnvironmentalReading[]>(mockEnvironmentalReadings);
-  const [radiation, setRadiation] = useState<RadiationReading[]>(mockRadiationReadings);
+// --- Alert / action history ----------------------------------------------
 
-  return { environmental, radiation };
+export function useAlertHistory(alertId: string | null) {
+  return useQuery<AlertEventDto[]>(
+    alertId ? `alert-history:${alertId}` : null,
+    () => apiClient.listAlertHistory(alertId as string)
+  );
 }
+
+export function useAssessmentDetail(assessmentId: string | null) {
+  return useQuery<AssessmentDetailDto>(
+    assessmentId ? `assessment-detail:${assessmentId}` : null,
+    () => apiClient.getAssessment(assessmentId as string)
+  );
+}
+
+export function useAssessmentList(
+  astronautId: string | null,
+  missionId: string | null,
+  moduleCode?: string
+) {
+  return useQuery<AssessmentSummaryDto[]>(
+    astronautId && missionId
+      ? `assessments:${missionId}:${astronautId}:${moduleCode ?? 'all'}`
+      : null,
+    () => apiClient.listAssessments(astronautId as string, missionId as string, moduleCode)
+  );
+}
+
+export function useActionHistory(actionId: string | null) {
+  return useQuery<import('./types').ActionEventDto[]>(
+    actionId ? `action-history:${actionId}` : null,
+    () => apiClient.listActionHistory(actionId as string)
+  );
+}
+
+// --- Communications -------------------------------------------------------
+
+/**
+ * Communication state comes from the shared context (one request per crew
+ * member). Sync status exists only for crew identities; ground roles have no
+ * batch-history endpoint and the page says so explicitly.
+ */
+export function useCommunications() {
+  const { missionId, commStatus, commError, commSupported } = useData();
+  const { isCrewMember } = useAuth();
+
+  const sync = useQuery<SyncStatusDto | null>(
+    isCrewMember && missionId ? `sync-status:${missionId}` : null,
+    async () => {
+      const result = await apiClient.getOwnSyncStatus();
+      if (result.error) {
+        return { data: null, error: result.error, status: result.status };
+      }
+      return { data: result.data, error: null, status: result.status };
+    }
+  );
+
+  return {
+    status: commStatus,
+    statusError: commError,
+    commSupported,
+    sync: sync.data,
+    syncError: sync.error,
+    syncLoading: sync.loading,
+    refetchSync: sync.refetch
+  };
+}
+
+// --- Audit ----------------------------------------------------------------
+
+export interface AuditFilters {
+  action?: string;
+  entityType?: string;
+  outcome?: string;
+  astronautId?: string;
+  occurredFrom?: string;
+  occurredTo?: string;
+}
+
+export function useAudit(filters: AuditFilters, enabled = true) {
+  const { missionId } = useData();
+  const key =
+    enabled && missionId
+      ? `audit:${missionId}:${filters.action ?? ''}:${filters.entityType ?? ''}:${
+          filters.outcome ?? ''
+        }:${filters.astronautId ?? ''}:${filters.occurredFrom ?? ''}:${filters.occurredTo ?? ''}`
+      : null;
+
+  return useQuery<AuditEventDto[]>(key, () =>
+    apiClient.listAuditEvents({
+      missionId: missionId as string,
+      astronautId: filters.astronautId,
+      action: filters.action,
+      entityType: filters.entityType,
+      outcome: filters.outcome,
+      occurredFrom: filters.occurredFrom,
+      occurredTo: filters.occurredTo,
+      limit: 200
+    })
+  );
+}
+
+// --- Messages -------------------------------------------------------------
+
+export function useMessages(astronautIdOverride?: string | null) {
+  const { missionId, selectedAstronautId } = useData();
+  const effectiveAstronautId =
+    astronautIdOverride === undefined ? selectedAstronautId : astronautIdOverride;
+
+  const query = useQuery<MessageDto[]>(
+    missionId ? `messages:${missionId}:${effectiveAstronautId ?? 'all'}` : null,
+    () =>
+      apiClient.listMessages({
+        missionId: missionId as string,
+        astronautId: effectiveAstronautId ?? undefined,
+        limit: 200
+      })
+  );
+
+  const sendMessage = useCallback(
+    async (input: {
+      missionId: string;
+      astronautId: string;
+      title: string;
+      body: string;
+      messageType: MessageTypeDto;
+      version?: string;
+      expiresAt?: string;
+    }) =>
+      apiClient.createMessage(
+        {
+          mission_id: input.missionId,
+          astronaut_id: input.astronautId,
+          message_type: input.messageType,
+          title: input.title,
+          body: input.body,
+          version: input.version || undefined,
+          expires_at: input.expiresAt
+        },
+        newIdempotencyKey('message')
+      ),
+    []
+  );
+
+  const recordMessageEvent = useCallback(
+    async (messageId: string, eventType: MessageEventTypeDto) =>
+      apiClient.createMessageEvent(
+        messageId,
+        {
+          event_type: eventType,
+          client_created_at: new Date().toISOString()
+        },
+        newIdempotencyKey('message-event')
+      ),
+    []
+  );
+
+  return { ...query, sendMessage, recordMessageEvent };
+}
+
+// Re-export the catalogue-derived domain list for navigation helpers.
+export { DOMAINS };

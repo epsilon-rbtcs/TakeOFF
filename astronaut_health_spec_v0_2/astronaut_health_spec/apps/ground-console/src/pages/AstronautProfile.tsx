@@ -1,856 +1,691 @@
-// Ground Health Console — Astronaut Health Profile & Monitoring Workspace
-// Comprehensive multi-domain clinical workspace with personal baselines and explainable evidence
+// Ground Health Console — Crew health workspace
+// Identification, observations, trends, assessments, alerts, recommended
+// actions and analysis provenance for one astronaut.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useAstronautProfile } from '../api/hooks';
+import { useData } from '../context/DataContext';
+import { useAssessmentDetail, useAstronaut, useAstronautWorkspace } from '../api/hooks';
+import type {
+  ActionDto,
+  AlertDto,
+  AnalysisRunDto,
+  AssessmentSummaryDto,
+  ObservationDto
+} from '../api/types';
+import { domainForModule } from '../api/domains';
 import { TrendChart } from '../components/common/TrendChart';
 import { DataTable, Column } from '../components/common/DataTable';
 import {
   AssessmentBadge,
   FreshnessBadge,
-  CommStateBadge,
-  DataQualityBadge,
+  SeverityBadge,
   SyntheticTag
 } from '../components/common/StatusBadge';
 import { TimeDisplay } from '../components/common/TimeDisplay';
-import { PrimaryButton, SecondaryButton } from '../components/common/Buttons';
-import { EmptyState } from '../components/common/EmptyState';
+import { SecondaryButton } from '../components/common/Buttons';
 import { LoadingState } from '../components/common/LoadingState';
+import { EmptyState } from '../components/common/EmptyState';
+import { IconRefresh } from '../components/common/Icons';
 import {
-  IconHeart,
-  IconCrew,
-  IconAssessment,
-  IconActivity,
-  IconRadio,
-  IconShield,
-  IconEnvironment
-} from '../components/common/Icons';
-import { Observation, ModuleAssessment } from '../types';
+  ErrorNotice,
+  KeyValue,
+  PageHeader,
+  Panel,
+  Stat,
+  WarningNotice
+} from '../components/common/PageChrome';
 import {
   formatTimestamp,
   formatValue,
+  getActionStatusLabel,
+  getActionTypeLabel,
   getMeasurementLabel,
-  getHealthDomainLabel,
-  groupObservationsByCode
+  getPriorityLabel,
+  getSourceTypeLabel,
+  isNumericValue,
+  normaliseFreshness,
+  toAssessmentStatus
 } from '../utilities';
-
-type ActiveTab =
-  | 'overview'
-  | 'cardiovascular'
-  | 'behavioural'
-  | 'sleep_cognition'
-  | 'musculoskeletal'
-  | 'immune'
-  | 'radiation'
-  | 'environmental'
-  | 'timeline';
 
 export const AstronautProfile: React.FC = () => {
   const { astronautId } = useParams<{ astronautId: string }>();
   const navigate = useNavigate();
+  const { selectedAstronautId, missionId, mission, selectAstronaut } = useData();
+  const effectiveId = astronautId ?? selectedAstronautId;
 
-  const currentAstronautId = astronautId || '11111111-1111-1111-1111-111111111111';
-  const { astronaut, observations, assessments, baselines, loading } = useAstronautProfile(currentAstronautId);
+  const identity = useAstronaut(effectiveId, missionId);
+  const workspace = useAstronautWorkspace(effectiveId, missionId);
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState<string | null>(null);
+  const detail = useAssessmentDetail(selectedAssessmentId);
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const observationsByCode = useMemo(() => {
+    const groups = new Map<string, ObservationDto[]>();
+    for (const observation of workspace.data?.observations ?? []) {
+      const existing = groups.get(observation.measurement_code) ?? [];
+      existing.push(observation);
+      groups.set(observation.measurement_code, existing);
+    }
+    for (const items of groups.values()) {
+      items.sort(
+        (a, b) => new Date(a.measured_at).getTime() - new Date(b.measured_at).getTime()
+      );
+    }
+    return groups;
+  }, [workspace.data?.observations]);
 
-  if (loading && !astronaut) {
-    return <LoadingState message="Loading astronaut clinical workspace..." height={340} />;
-  }
+  const chartable = [...observationsByCode.entries()]
+    .map(([code, items]) => ({
+      code,
+      numeric: items.filter((item) => isNumericValue(item.value))
+    }))
+    .filter((item) => item.numeric.length >= 2)
+    .slice(0, 8);
 
-  const groupedObs = groupObservationsByCode(observations);
-
-  // Helper to find baseline for a measurement code
-  const getBaseline = (code: string) => baselines.find((b) => b.measurement_code === code);
-
-  // Tab definitions
-  const tabs: { key: ActiveTab; label: string; icon: string }[] = [
-    { key: 'overview', label: '1. Overview', icon: '◉' },
-    { key: 'cardiovascular', label: '2. Cardiovascular', icon: '♥' },
-    { key: 'behavioural', label: '3. Behavioural', icon: '🧠' },
-    { key: 'sleep_cognition', label: '4. Sleep & Cognition', icon: '◷' },
-    { key: 'musculoskeletal', label: '5. Musculoskeletal', icon: '🦴' },
-    { key: 'immune', label: '6. Immune & Clinical', icon: '🛡' },
-    { key: 'radiation', label: '7. Personal Radiation', icon: '☢' },
-    { key: 'environmental', label: '8. Environmental', icon: '⬡' },
-    { key: 'timeline', label: 'Historical Timeline', icon: '≡' }
-  ];
-
-  // Common Observation Table Columns
-  const obsColumns: Column<Observation>[] = [
+  const observationColumns: Column<ObservationDto>[] = [
     {
-      key: 'measurement',
+      key: 'measured',
+      header: 'Measured (device)',
+      render: (row) => <TimeDisplay measured_at={row.measured_at} format="compact" />
+    },
+    {
+      key: 'code',
       header: 'Measurement',
       render: (row) => (
         <div>
-          <div style={{ fontWeight: 700 }}>{getMeasurementLabel(row.measurement_code)}</div>
-          <div style={{ fontSize: '10px', color: 'rgba(0,0,0,0.5)', fontFamily: 'monospace' }}>
-            {row.source_device_id || row.source}
+          <div style={{ fontWeight: 600 }}>{getMeasurementLabel(row.measurement_code)}</div>
+          <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)' }}>
+            {row.measurement_code}
           </div>
         </div>
       )
     },
     {
       key: 'value',
-      header: 'Value & Unit',
-      render: (row) => (
-        <span style={{ fontWeight: 800, fontSize: '13px', fontFamily: 'monospace' }}>
-          {formatValue(row.value, row.unit)}
-        </span>
-      )
+      header: 'Value',
+      align: 'right',
+      render: (row) =>
+        isNumericValue(row.value) ? formatValue(row.value, row.unit) : String(row.value ?? '—')
     },
     {
-      key: 'timestamps',
-      header: 'Provenance (Device / Received)',
-      render: (row) => (
-        <TimeDisplay
-          measured_at={row.measured_at}
-          created_at={row.created_at}
-          received_at={row.received_at}
-          format="compact"
-        />
-      )
+      key: 'canonical',
+      header: 'Canonical',
+      align: 'right',
+      render: (row) =>
+        row.canonical_unit && isNumericValue(row.canonical_value)
+          ? formatValue(row.canonical_value, row.canonical_unit)
+          : '—'
     },
     {
       key: 'source',
-      header: 'Source Origin',
+      header: 'Source',
+      render: (row) => getSourceTypeLabel(row.source.type)
+    },
+    {
+      key: 'quality',
+      header: 'Quality',
+      render: (row) => row.quality_status.toUpperCase()
+    },
+    {
+      key: 'created',
+      header: 'Client created',
+      render: (row) => <TimeDisplay created_at={row.created_at} format="compact" />
+    },
+    {
+      key: 'received',
+      header: 'Ground received',
+      render: (row) => <TimeDisplay received_at={row.received_at} format="compact" />
+    }
+  ];
+
+  const assessmentColumns: Column<AssessmentSummaryDto>[] = [
+    {
+      key: 'type',
+      header: 'Type',
       render: (row) => (
-        <span style={{ fontSize: '11px', textTransform: 'uppercase' }}>
-          {row.source.replace(/_/g, ' ')}
+        <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 700 }}>
+          {row.assessment_type}
         </span>
       )
     },
     {
-      key: 'quality',
-      header: 'Data Quality',
-      render: (row) => <DataQualityBadge quality={row.quality} />
+      key: 'module',
+      header: 'Module',
+      render: (row) => {
+        if (!row.module_code) return 'Integrated';
+        const domain = domainForModule(row.module_code);
+        return domain ? (
+          <button
+            type="button"
+            onClick={() => navigate(domain.route)}
+            style={{
+              background: 'none',
+              border: 'none',
+              padding: 0,
+              font: 'inherit',
+              fontSize: '11px',
+              textDecoration: 'underline',
+              cursor: 'pointer'
+            }}
+          >
+            {domain.label}
+          </button>
+        ) : (
+          row.module_code
+        );
+      }
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => <AssessmentBadge status={toAssessmentStatus(row.status)} />
+    },
+    {
+      key: 'assessed',
+      header: 'Assessed',
+      render: (row) => (row.assessed_at ? formatTimestamp(row.assessed_at) : '—')
+    },
+    {
+      key: 'summary',
+      header: 'Summary',
+      render: (row) => <span style={{ fontSize: '10px' }}>{row.summary}</span>
+    },
+    {
+      key: 'algorithm',
+      header: 'Algorithm / rules',
+      render: (row) => (
+        <span style={{ fontSize: '9px', fontFamily: 'monospace' }}>
+          {row.algorithm_version} / {row.rule_set_version}
+        </span>
+      )
+    },
+    {
+      key: 'synthetic',
+      header: 'Data',
+      render: (row) => (row.simulated ? <SyntheticTag compact /> : 'RECORDED')
     }
   ];
 
+  const alertColumns: Column<AlertDto>[] = [
+    {
+      key: 'severity',
+      header: 'Severity',
+      render: (row) => <SeverityBadge severity={row.severity as never} />
+    },
+    {
+      key: 'title',
+      header: 'Alert',
+      render: (row) => (
+        <div>
+          <div style={{ fontWeight: 700 }}>{row.title}</div>
+          <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)' }}>
+            {row.alert_code}
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => (
+        <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>{row.status}</span>
+      )
+    },
+    {
+      key: 'created',
+      header: 'Raised',
+      render: (row) => formatTimestamp(row.created_at)
+    },
+    {
+      key: 'ack',
+      header: 'Acknowledgement',
+      render: (row) =>
+        row.acknowledged_at ? (
+          <div style={{ fontSize: '10px' }}>
+            {formatTimestamp(row.acknowledged_at)}
+            <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)' }}>
+              {row.acknowledged_by ?? 'actor not recorded'}
+            </div>
+          </div>
+        ) : (
+          <span style={{ fontSize: '10px' }}>Not acknowledged</span>
+        )
+    },
+    {
+      key: 'revision',
+      header: 'Rev',
+      align: 'right',
+      render: (row) => row.revision
+    }
+  ];
+
+  const actionColumns: Column<ActionDto>[] = [
+    {
+      key: 'title',
+      header: 'Action',
+      render: (row) => (
+        <div>
+          <div style={{ fontWeight: 700 }}>{row.title}</div>
+          <div style={{ fontSize: '9px' }}>{getActionTypeLabel(row.action_type)}</div>
+        </div>
+      )
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      render: (row) => getPriorityLabel(row.priority)
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => getActionStatusLabel(row.status)
+    },
+    {
+      key: 'due',
+      header: 'Due',
+      render: (row) => (row.due_at ? formatTimestamp(row.due_at) : 'No due time')
+    },
+    {
+      key: 'revision',
+      header: 'Rev',
+      align: 'right',
+      render: (row) => row.revision
+    }
+  ];
+
+  const runColumns: Column<AnalysisRunDto>[] = [
+    {
+      key: 'run',
+      header: 'Run',
+      render: (row) => (
+        <span style={{ fontSize: '9px', fontFamily: 'monospace' }}>{row.run_id.slice(0, 8)}…</span>
+      )
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (row) => row.status.toUpperCase()
+    },
+    {
+      key: 'algorithm',
+      header: 'Algorithm / rules',
+      render: (row) => (
+        <span style={{ fontSize: '9px', fontFamily: 'monospace' }}>
+          {row.algorithm_version} / {row.rule_set_version}
+        </span>
+      )
+    },
+    {
+      key: 'location',
+      header: 'Execution',
+      render: (row) => row.execution_location
+    },
+    {
+      key: 'started',
+      header: 'Started',
+      render: (row) => (row.started_at ? formatTimestamp(row.started_at) : '—')
+    },
+    {
+      key: 'completed',
+      header: 'Completed',
+      render: (row) => (row.completed_at ? formatTimestamp(row.completed_at) : '—')
+    },
+    {
+      key: 'error',
+      header: 'Error code',
+      render: (row) => row.error_code ?? '—'
+    }
+  ];
+
+  if (!effectiveId) {
+    return (
+      <div>
+        <PageHeader eyebrow="Crew" title="Crew health workspace" />
+        <EmptyState
+          title="No crew member selected"
+          description="Select a crew member from the roster or header before opening a health workspace."
+        />
+      </div>
+    );
+  }
+
+  if (workspace.loading) {
+    return <LoadingState message="Loading crew observations, assessments and provenance..." />;
+  }
+
+  if (workspace.error || !workspace.data) {
+    return (
+      <div>
+        <PageHeader
+          eyebrow="Crew"
+          title={identity.data?.display_name ?? 'Crew health workspace'}
+        />
+        <ErrorNotice
+          title="Crew workspace unavailable"
+          message={workspace.error?.message ?? 'The Ground API returned no workspace payload.'}
+          details={workspace.error?.details}
+        />
+      </div>
+    );
+  }
+
+  const data = workspace.data;
+  const dash = data.dashboard;
+  const astronaut = identity.data;
+  const openAlerts = data.alerts.filter((alert) => alert.status === 'open');
+  const acknowledgedAlerts = data.alerts.filter((alert) => alert.status === 'acknowledged');
+  const latestObservation = data.observations[0] ?? null;
+
   return (
-    <div>
-      {/* Astronaut Header Card */}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <PageHeader
+        eyebrow="Crew health workspace"
+        title={astronaut?.display_name ?? identity.data?.astronaut_code ?? 'Crew member'}
+        description={
+          mission
+            ? `${mission.mission_code} · ${mission.mission_name}. All values originate from received observations and server analysis records.`
+            : 'Crew record from the Ground API.'
+        }
+        actions={
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <SecondaryButton size="sm" onClick={() => selectAstronaut(effectiveId)}>
+              Select for console
+            </SecondaryButton>
+            <SecondaryButton size="sm" onClick={workspace.refetch} icon={<IconRefresh size={12} />}>
+              Reload
+            </SecondaryButton>
+            <SecondaryButton size="sm" onClick={() => navigate('/crew')}>
+              Roster
+            </SecondaryButton>
+          </div>
+        }
+      />
+
+      {data.warnings.map((warning) => (
+        <WarningNotice key={warning} message={warning} />
+      ))}
+
       <div
         style={{
-          border: '2px solid #000000',
-          backgroundColor: '#FFFFFF',
-          padding: '20px 24px',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          gap: '16px'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: '8px'
         }}
       >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-            <span
-              style={{
-                fontSize: '10px',
-                fontWeight: 800,
-                letterSpacing: '0.08em',
-                backgroundColor: '#FFFF08',
-                color: '#000000',
-                padding: '2px 6px',
-                border: '1px solid #000000',
-                textTransform: 'uppercase'
-              }}
-            >
-              ASTRONAUT HEALTH WORKSPACE
-            </span>
-            <SyntheticTag compact />
-          </div>
-
-          <h1
-            style={{
-              fontSize: '26px',
-              fontWeight: 900,
-              letterSpacing: '0.02em',
-              textTransform: 'uppercase',
-              margin: '0 0 6px 0'
-            }}
-          >
-            {astronaut?.name}
-          </h1>
-
-          <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.7)', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-            <span>
-              Callsign: <strong style={{ color: '#000000' }}>"{astronaut?.callsign}"</strong>
-            </span>
-            <span>
-              Role: <strong style={{ color: '#000000' }}>{astronaut?.role_in_crew}</strong>
-            </span>
-            <span>
-              Agency: <strong style={{ color: '#000000' }}>{astronaut?.agency}</strong>
-            </span>
-            <span>
-              Sex: <strong style={{ color: '#000000' }}>{astronaut?.biological_sex || 'Unspecified'}</strong>
-            </span>
-          </div>
-
-          <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.5)', fontFamily: 'monospace', marginTop: '6px' }}>
-            ID: {astronaut?.astronaut_id} · Mission: Artemis VII
-          </div>
-        </div>
-
-        {/* Quick Action Buttons */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <SecondaryButton
-            size="sm"
-            onClick={() => navigate('/messages')}
-          >
-            COMPOSE CREW MESSAGE
-          </SecondaryButton>
-          <SecondaryButton
-            size="sm"
-            onClick={() => navigate('/alerts')}
-          >
-            VIEW ACTION CENTRE
-          </SecondaryButton>
-        </div>
+        <Stat
+          label="Integrated status"
+          value={dash ? toAssessmentStatus(dash.integrated_status).replace('_', ' ').toUpperCase() : '—'}
+          detail={dash?.assessed_at ? formatTimestamp(dash.assessed_at) : 'No integrated assessment'}
+          emphasis
+        />
+        <Stat
+          label="Freshness"
+          value={dash ? normaliseFreshness(dash.freshness).toUpperCase() : '—'}
+          detail={latestObservation ? `Latest ${formatTimestamp(latestObservation.measured_at)}` : 'No observation'}
+        />
+        <Stat label="Observations" value={data.observations.length} detail="Received records (up to 500)" />
+        <Stat label="Open alerts" value={openAlerts.length} detail={`${acknowledgedAlerts.length} acknowledged`} />
+        <Stat label="Pending actions" value={dash?.pending_action_count ?? 0} />
+        <Stat label="Analysis runs" value={data.analysisRuns.length} />
       </div>
 
-      {/* Tabs Navigation Bar */}
       <div
         style={{
-          display: 'flex',
-          borderBottom: '2px solid #000000',
-          marginBottom: '24px',
-          overflowX: 'auto',
-          backgroundColor: '#FFFFFF'
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: '12px'
         }}
       >
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: '10px 16px',
-                border: 'none',
-                borderBottom: isActive ? '4px solid #000000' : '4px solid transparent',
-                backgroundColor: isActive ? '#FFFF08' : '#FFFFFF',
-                color: '#000000',
-                fontWeight: isActive ? 800 : 500,
-                fontSize: '12px',
-                letterSpacing: '0.04em',
-                textTransform: 'uppercase',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.08s ease'
-              }}
-            >
-              <span style={{ marginRight: '6px' }}>{tab.icon}</span>
-              {tab.label}
-            </button>
-          );
-        })}
+        <Panel title="Identification" subtitle="Enrolled astronaut record">
+          {astronaut ? (
+            <>
+              <KeyValue label="Display name" value={astronaut.display_name} />
+              <KeyValue label="Astronaut code" value={astronaut.astronaut_code} mono />
+              <KeyValue label="Astronaut ID" value={astronaut.astronaut_id} mono />
+              <KeyValue label="Mission IDs" value={astronaut.mission_ids.join(', ') || 'None'} mono />
+              <KeyValue label="Record created" value={astronaut.created_at ? formatTimestamp(astronaut.created_at) : '—'} />
+              <KeyValue label="Record updated" value={astronaut.updated_at ? formatTimestamp(astronaut.updated_at) : '—'} />
+              <KeyValue label="Simulated" value={astronaut.simulated ? 'YES — synthetic demonstration record' : 'NO'} />
+              {astronaut.simulated && <div style={{ marginTop: '8px' }}><SyntheticTag /></div>}
+            </>
+          ) : (
+            <ErrorNotice
+              title="Identity payload"
+              message={identity.error?.message ?? 'Astronaut identity was not returned.'}
+            />
+          )}
+        </Panel>
+
+        <Panel title="Measurement provenance" subtitle="Device time, client envelope and Ground receipt are distinct">
+          <KeyValue
+            label="Latest measured"
+            value={latestObservation ? formatTimestamp(latestObservation.measured_at) : '—'}
+          />
+          <KeyValue
+            label="Latest client created"
+            value={latestObservation?.created_at ? formatTimestamp(latestObservation.created_at) : '—'}
+          />
+          <KeyValue
+            label="Latest Ground receipt"
+            value={latestObservation?.received_at ? formatTimestamp(latestObservation.received_at) : '—'}
+          />
+          <KeyValue label="Latest source" value={latestObservation ? getSourceTypeLabel(latestObservation.source.type) : '—'} />
+          <KeyValue label="Latest quality" value={latestObservation?.quality_status.toUpperCase() ?? '—'} />
+          <KeyValue
+            label="Contact recency"
+            value={dash?.contact_recency ?? 'unknown'}
+          />
+          <KeyValue
+            label="Adapter state observed"
+            value={dash?.adapter_state_observed_at ? formatTimestamp(dash.adapter_state_observed_at) : 'Not reported'}
+          />
+          <KeyValue
+            label="Generated at"
+            value={dash?.generated_at ? formatTimestamp(dash.generated_at) : '—'}
+          />
+        </Panel>
       </div>
 
-      {/* ======================================================== */}
-      {/* TAB 1: OVERVIEW */}
-      {/* ======================================================== */}
-      {activeTab === 'overview' && (
-        <div>
-          {/* Top Banner: Status & Attention Summary */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <div style={{ border: '1px solid #000000', padding: '16px', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.6)' }}>
-                Recent Assessments Summary
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 900, marginTop: '4px' }}>
-                {assessments.filter((a) => a.status === 'normal').length} Nominal / {assessments.length} Domains
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '4px' }}>
-                {assessments.filter((a) => a.status === 'attention' || a.status === 'monitor').length} require operational observation
-              </div>
-            </div>
-
-            <div style={{ border: '1px solid #000000', padding: '16px', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.6)' }}>
-                Telecommunication & Freshness
-              </div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' }}>
-                <CommStateBadge state="LIVE" />
-                <FreshnessBadge freshness="current" />
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '6px' }}>
-                Latest synchronized measurement: {formatTimestamp(observations[observations.length - 1]?.measured_at, 'time')}
-              </div>
-            </div>
-
-            <div style={{ border: '1px solid #000000', padding: '16px', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'rgba(0,0,0,0.6)' }}>
-                Personal Baselines Active
-              </div>
-              <div style={{ fontSize: '20px', fontWeight: 900, marginTop: '4px' }}>
-                {baselines.length} Metric Profiles
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '4px' }}>
-                Established at Flight Day 0 (Pre-launch normative testing)
-              </div>
-            </div>
-          </div>
-
-          {/* Explainable Domain Assessments Grid */}
-          <div style={{ marginBottom: '28px' }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
-              Latest Domain Assessments & Explainable Findings
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {assessments.map((asm) => (
-                <div
-                  key={asm.assessment_id}
-                  style={{
-                    border: '1px solid #000000',
-                    padding: '14px 18px',
-                    backgroundColor: asm.status === 'attention' ? 'rgba(255, 255, 8, 0.15)' : '#FFFFFF'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <AssessmentBadge status={asm.status} />
-                      <span style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase' }}>
-                        {getHealthDomainLabel(asm.health_domain)}
-                      </span>
-                    </div>
-                    <span style={{ fontSize: '11px', color: 'rgba(0,0,0,0.5)', fontFamily: 'monospace' }}>
-                      Algorithm: {asm.algorithm_version} · Evaluated: {formatTimestamp(asm.assessed_at, 'relative')}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: '13px', fontWeight: 500, lineHeight: 1.4, marginBottom: '8px' }}>
-                    {asm.summary}
-                  </div>
-
-                  {asm.findings.length > 0 && (
-                    <div style={{ borderLeft: '3px solid #000000', paddingLeft: '12px', margin: '8px 0', fontSize: '12px' }}>
-                      {asm.findings.map((f) => (
-                        <div key={f.finding_id} style={{ marginBottom: '4px' }}>
-                          <strong>Finding:</strong> {f.description}
-                          {f.recommendation && (
-                            <div style={{ color: 'rgba(0,0,0,0.7)', marginTop: '2px' }}>
-                              <em>Next Step:</em> {f.recommendation}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.6)', marginTop: '6px' }}>
-                    Data sufficiency: <strong>{asm.data_sufficiency.toUpperCase()}</strong> · {asm.data_quality_summary}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recent Synced Observations Table */}
-          <div>
-            <h3 style={{ fontSize: '14px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '12px' }}>
-              Most Recent Observations Received (All Domains)
-            </h3>
-            <DataTable
-              columns={obsColumns}
-              data={observations.slice(-10).reverse()}
-              keyField="observation_id"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 2: CARDIOVASCULAR HEALTH */}
-      {/* ======================================================== */}
-      {activeTab === 'cardiovascular' && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '16px' }}>
-            <div>
-              <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-                Cardiovascular Health & Autonomic Balance
-              </h2>
-              <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-                Continuous wearable biometric stream evaluated against individual resting baseline.
-              </div>
-            </div>
-            <div style={{ fontSize: '11px', fontFamily: 'monospace' }}>
-              Baseline: HR mean {getBaseline('heart_rate')?.value_mean} bpm (range: {getBaseline('heart_rate')?.range_min}–{getBaseline('heart_rate')?.range_max} bpm)
-            </div>
-          </div>
-
-          {/* Trend Charts Grid */}
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <TrendChart
-              title="Heart Rate (Continuous Daily Peak/Rest)"
-              unit="bpm"
-              data={(groupedObs['heart_rate'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={getBaseline('heart_rate')?.value_mean}
-              baselineMin={getBaseline('heart_rate')?.range_min}
-              baselineMax={getBaseline('heart_rate')?.range_max}
-              baselineLabel="Personal Mean"
-            />
-
-            <TrendChart
-              title="Heart Rate Variability (HRV - RMSSD)"
-              unit="ms"
-              data={(groupedObs['hrv_rmssd'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={getBaseline('hrv_rmssd')?.value_mean}
-              baselineMin={getBaseline('hrv_rmssd')?.range_min}
-              baselineMax={getBaseline('hrv_rmssd')?.range_max}
-              baselineLabel="Autonomic Norm"
-            />
-          </div>
-
-          {/* Vitals Summary Table */}
-          <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
-              Cardiovascular Observations Log
-            </h3>
-            <DataTable
-              columns={obsColumns}
-              data={observations.filter((o) =>
-                ['heart_rate', 'resting_heart_rate', 'hrv_rmssd', 'systolic_bp', 'diastolic_bp', 'spo2', 'body_temperature'].includes(
-                  o.measurement_code
-                )
-              )}
-              keyField="observation_id"
-            />
-          </div>
-
-          <div style={{ border: '1px solid #000000', padding: '12px', backgroundColor: '#FAFAFA', fontSize: '11px' }}>
-            <strong>Autonomic Balance Interpretation:</strong> HRV RMSSD measures parasympathetic reactivation. Reductions over consecutive rest cycles indicate sympathetic activation and potential cumulative workload fatigue.
-          </div>
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 3: BEHAVIOURAL HEALTH */}
-      {/* ======================================================== */}
-      {activeTab === 'behavioural' && (
-        <div>
-          <div
-            style={{
-              backgroundColor: '#FFFF08',
-              border: '1px solid #000000',
-              padding: '8px 12px',
-              fontSize: '11px',
-              fontWeight: 700,
-              marginBottom: '16px'
-            }}
-          >
-            NOTE: Behavioural self-reports reflect subjective daily visual analogue scales (VAS). They represent monitored longitudinal trends and operational self-assessments, NOT psychiatric or diagnostic determinations.
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <TrendChart
-              title="Self-Reported Fatigue Trend"
-              unit="score /10"
-              data={(groupedObs['fatigue_score'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={3}
-              baselineLabel="Nominal Max"
-            />
-
-            <TrendChart
-              title="Self-Reported Stress Trend"
-              unit="score /10"
-              data={(groupedObs['stress_score'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={4}
-              baselineLabel="Nominal Max"
-            />
-
-            <TrendChart
-              title="Self-Reported Mood State"
-              unit="score /10"
-              data={(groupedObs['mood_score'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={8}
-              baselineLabel="Personal Baseline"
-            />
-          </div>
-
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['mood_score', 'stress_score', 'fatigue_score', 'pain_score'].includes(o.measurement_code)
-            )}
-            keyField="observation_id"
+      <Panel
+        title="Assessments"
+        subtitle="Select a row to inspect findings and evidence"
+        actions={data.assessments.length > 0 ? <span style={{ fontSize: '9px' }}>{data.assessments.length} RECORD(S)</span> : undefined}
+      >
+        {data.assessments.length === 0 ? (
+          <EmptyState
+            title="No assessments"
+            description="No module or integrated assessment exists for this crew member."
           />
-        </div>
-      )}
+        ) : (
+          <DataTable
+            columns={assessmentColumns}
+            data={data.assessments}
+            keyField="assessment_id"
+            selectedRowKey={selectedAssessmentId ?? undefined}
+            onRowClick={(row) => setSelectedAssessmentId(row.assessment_id)}
+          />
+        )}
+      </Panel>
 
-      {/* ======================================================== */}
-      {/* TAB 4: SLEEP AND COGNITION */}
-      {/* ======================================================== */}
-      {activeTab === 'sleep_cognition' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Sleep Architecture & Cognitive Vigilance
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              Objective polysomnographic wearable duration correlated with Psychomotor Vigilance Task (PVT) performance.
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <TrendChart
-              title="Total Sleep Duration"
-              unit="hours"
-              data={(groupedObs['sleep_duration'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={getBaseline('sleep_duration')?.value_mean}
-              baselineMin={getBaseline('sleep_duration')?.range_min}
-              baselineMax={getBaseline('sleep_duration')?.range_max}
-              baselineLabel="Prescribed Rest"
+      {selectedAssessmentId && (
+        <Panel
+          title="Assessment detail & evidence"
+          subtitle="Server-computed findings with linked observation identifiers"
+          actions={
+            <SecondaryButton size="sm" onClick={() => setSelectedAssessmentId(null)}>
+              Close
+            </SecondaryButton>
+          }
+        >
+          {detail.loading ? (
+            <LoadingState height={120} message="Loading assessment detail..." />
+          ) : detail.error || !detail.data ? (
+            <ErrorNotice
+              title="Assessment detail"
+              message={detail.error?.message ?? 'No detail payload.'}
+              details={detail.error?.details}
             />
-
-            <TrendChart
-              title="PVT Mean Reaction Time"
-              unit="ms"
-              data={(groupedObs['pvt_mean_reaction_time'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={getBaseline('pvt_mean_reaction_time')?.value_mean}
-              baselineLabel="Cognitive Baseline"
-            />
-          </div>
-
-          <h3 style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
-            Individual Cognitive Assessment Sessions & PVT Telemetry
-          </h3>
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['sleep_duration', 'pvt_mean_reaction_time', 'pvt_lapses', 'pvt_false_starts'].includes(o.measurement_code)
-            )}
-            keyField="observation_id"
-          />
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 5: MUSCULOSKELETAL AND BONE */}
-      {/* ======================================================== */}
-      {activeTab === 'musculoskeletal' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Musculoskeletal Countermeasures & Bone Metabolism
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              ARED resistance countermeasure adherence tracked alongside periodic biochemical bone resorption markers.
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: '#FAFAFA',
-              border: '1px solid #000000',
-              padding: '10px 14px',
-              fontSize: '11px',
-              marginBottom: '16px'
-            }}
-          >
-            <strong>SCIENTIFIC DISTINCTION:</strong> Resistance exercise minutes and grip strength represent indirect behavioural/mechanical indicators. Serum CTX and P1NP assays represent direct biochemical bone turnover markers.
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <TrendChart
-              title="Resistance Countermeasure Adherence"
-              unit="min"
-              data={(groupedObs['resistance_exercise_minutes'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={60}
-              baselineLabel="Prescribed 60m"
-            />
-
-            <div style={{ border: '1px solid #000000', padding: '16px', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px' }}>
-                Bone Biochemical Marker Panel (Direct Lab)
-              </div>
-              <div style={{ fontSize: '11px', lineHeight: 1.6 }}>
-                <div>CTX Bone Resorption: <strong>0.58 ng/mL</strong> (Lab Reference: 0.15–0.65 ng/mL)</div>
-                <div>P1NP Bone Formation: <strong>46.2 ng/mL</strong> (Lab Reference: 25.0–75.0 ng/mL)</div>
-                <div>Serum Calcium: <strong>9.4 mg/dL</strong> (Normal Range: 8.5–10.2 mg/dL)</div>
-                <div>25-OH Vitamin D: <strong>38 ng/mL</strong> (Target: &gt;30 ng/mL)</div>
-                <div style={{ fontSize: '10px', color: 'rgba(0,0,0,0.5)', marginTop: '8px' }}>
-                  Specimen: Fasting morning blood draw · ECLIA automated analyzer
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['resistance_exercise_minutes', 'grip_strength', 'ctx_bone_resorption', 'p1np_bone_formation'].includes(
-                o.measurement_code
-              )
-            )}
-            keyField="observation_id"
-          />
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 6: IMMUNE HEALTH */}
-      {/* ======================================================== */}
-      {activeTab === 'immune' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Immune Surveillance & Clinical Laboratory
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              Periodic clinical assays, complete blood counts (CBC), and symptom surveillance logs.
-            </div>
-          </div>
-
-          <div
-            style={{
-              border: '2px dashed #000000',
-              backgroundColor: '#FFFFFF',
-              padding: '16px',
-              marginBottom: '20px'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <AssessmentBadge status="insufficient_data" />
-              <span style={{ fontSize: '13px', fontWeight: 800 }}>AWAITING FLIGHT DAY 145 CLINICAL ASSAY</span>
-            </div>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.7)', lineHeight: 1.4 }}>
-              No complete blood count (CBC) or inflammatory cytokine panel has been ingested within the last 14 days.
-              Do not infer immune competency or suppression from symptom absence alone.
-            </div>
-          </div>
-
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['wbc_count', 'lymphocyte_count', 'neutrophil_count', 'crp', 'body_temperature', 'infection_symptom_flag'].includes(
-                o.measurement_code
-              )
-            )}
-            keyField="observation_id"
-            emptyMessage="No acute immune or infection symptom records reported in current telemetry window."
-          />
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 7: RADIATION */}
-      {/* ======================================================== */}
-      {activeTab === 'radiation' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Personal Radiation Dosimetry
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              Astronaut personal dosimeter measurements. Strictly separated from environmental cabin radiation monitors.
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              marginBottom: '24px'
-            }}
-          >
-            <TrendChart
-              title="Personal Dose Equivalent Rate"
-              unit="µSv/h"
-              data={(groupedObs['dose_rate'] || []).map((o) => ({
-                timestamp: o.measured_at,
-                value: o.value
-              }))}
-              baselineValue={25}
-              baselineLabel="Nominal GCR"
-            />
-
-            <div style={{ border: '1px solid #000000', padding: '16px', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '12px' }}>
-                Accumulated Flight Mission Dose
-              </div>
-              <div style={{ fontSize: '28px', fontWeight: 900, fontFamily: 'monospace' }}>
-                19.1 <span style={{ fontSize: '16px' }}>mSv</span>
-              </div>
-              <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.7)', marginTop: '4px' }}>
-                Mission Elapsed Time: Flight Day 142 · Career Limit Utilization: <strong>3.8%</strong>
-              </div>
-              <div style={{ borderTop: '1px solid rgba(0,0,0,0.1)', marginTop: '12px', paddingTop: '8px', fontSize: '10px', color: 'rgba(0,0,0,0.5)' }}>
-                Instrument: Active Silicon Solid-State Microdosimeter (dev-personal-dosimeter-01)
-              </div>
-            </div>
-          </div>
-
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['dose_rate', 'dose_equivalent', 'absorbed_dose', 'linear_energy_transfer'].includes(o.measurement_code)
-            )}
-            keyField="observation_id"
-          />
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 8: ENVIRONMENTAL HEALTH */}
-      {/* ======================================================== */}
-      {activeTab === 'environmental' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Cabin Biosphere & Atmospheric Conditions
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              Atmospheric gas composition, thermal parameters, and habitat area radiation monitors.
-            </div>
-          </div>
-
-          <div
-            style={{
-              backgroundColor: '#FAFAFA',
-              border: '1px solid #000000',
-              padding: '12px',
-              fontSize: '11px',
-              marginBottom: '16px'
-            }}
-          >
-            Environmental sensor data reflects onboard ECLSS sensors and is shared across all crew members.
-            See the dedicated <button onClick={() => navigate('/environment')} style={{ textDecoration: 'underline', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer' }}>Environment & Radiation Workspace</button> for full habitat sector telemetry.
-          </div>
-
-          <DataTable
-            columns={obsColumns}
-            data={observations.filter((o) =>
-              ['cabin_co2', 'cabin_temperature', 'relative_humidity', 'cabin_pressure'].includes(o.measurement_code)
-            )}
-            keyField="observation_id"
-            emptyMessage="All environmental telemetry synchronized through habitat area network."
-          />
-        </div>
-      )}
-
-      {/* ======================================================== */}
-      {/* TAB 9: HISTORICAL ACTIVITY TIMELINE */}
-      {/* ======================================================== */}
-      {activeTab === 'timeline' && (
-        <div>
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 800, textTransform: 'uppercase', margin: 0 }}>
-              Unified Astronaut Historical Timeline
-            </h2>
-            <div style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', marginTop: '2px' }}>
-              Audited chronological stream of observations, assessments, alert generation, and status acknowledgements.
-            </div>
-          </div>
-
-          <div style={{ border: '1px solid #000000', backgroundColor: '#FFFFFF' }}>
-            {observations.slice(-15).reverse().map((obs, idx) => (
-              <div
-                key={obs.observation_id}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '10px 16px',
-                  borderBottom: idx !== 14 ? '1px solid rgba(0,0,0,0.1)' : 'none',
-                  fontSize: '12px'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span
-                    style={{
-                      fontFamily: 'monospace',
-                      fontWeight: 700,
-                      fontSize: '11px',
-                      backgroundColor: 'rgba(0,0,0,0.06)',
-                      padding: '2px 6px'
-                    }}
-                  >
-                    OBSERVATION
-                  </span>
-                  <span style={{ fontWeight: 600 }}>{getMeasurementLabel(obs.measurement_code)}:</span>
-                  <span style={{ fontWeight: 800, fontFamily: 'monospace' }}>
-                    {formatValue(obs.value, obs.unit)}
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'rgba(0,0,0,0.5)' }}>
-                    via {obs.source} ({obs.source_device_id || 'manual'})
-                  </span>
-                </div>
-                <TimeDisplay
-                  measured_at={obs.measured_at}
-                  received_at={obs.received_at}
-                  format="compact"
+          ) : (
+            <>
+              <KeyValue label="Assessment ID" value={detail.data.assessment_id} mono />
+              <KeyValue label="Data sufficiency" value={detail.data.data_sufficiency ?? 'Not returned'} />
+              <KeyValue label="Analysis run" value={detail.data.analysis_run_id ?? 'Not linked'} mono />
+              <KeyValue
+                label="Evidence observation IDs"
+                value={
+                  detail.data.evidence_observation_ids && detail.data.evidence_observation_ids.length > 0
+                    ? detail.data.evidence_observation_ids.join(', ')
+                    : 'None linked'
+                }
+                mono
+              />
+              {detail.data.baseline_versions && detail.data.baseline_versions.length > 0 && (
+                <KeyValue
+                  label="Baseline versions"
+                  value={detail.data.baseline_versions
+                    .map((baseline) => `${baseline.measurement_code ?? 'unknown'} v${baseline.version}`)
+                    .join(', ')}
                 />
-              </div>
+              )}
+              {detail.data.limitations && detail.data.limitations.length > 0 && (
+                <div style={{ marginTop: '8px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', marginBottom: '3px' }}>
+                    LIMITATIONS
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '11px' }}>
+                    {detail.data.limitations.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {detail.data.findings && detail.data.findings.length > 0 && (
+                <div style={{ marginTop: '10px' }}>
+                  <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', marginBottom: '4px' }}>
+                    FINDINGS
+                  </div>
+                  {detail.data.findings.map((finding) => (
+                    <div
+                      key={finding.finding_code}
+                      style={{ border: '1px solid rgba(0,0,0,0.25)', padding: '7px 8px', marginBottom: '6px' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '11px' }}>
+                          {finding.measurement_code
+                            ? getMeasurementLabel(finding.measurement_code)
+                            : finding.finding_code}
+                        </span>
+                        <SeverityBadge severity={finding.severity as never} />
+                      </div>
+                      <div style={{ fontSize: '10px', marginTop: '3px' }}>{finding.explanation}</div>
+                      <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+                        Evidence: {finding.evidence_observation_ids.join(', ') || 'none linked'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+      )}
+
+      <Panel title="Observed trends" subtitle="Every point is a received observation; gaps are not filled">
+        {chartable.length === 0 ? (
+          <EmptyState
+            title="Insufficient numeric history"
+            description="At least two numeric observations of the same code are required to draw a trend."
+          />
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '12px'
+            }}
+          >
+            {chartable.map(({ code, numeric }) => (
+              <TrendChart
+                key={code}
+                title={getMeasurementLabel(code)}
+                unit={numeric[0]?.unit ?? ''}
+                data={numeric.map((item) => ({
+                  timestamp: item.measured_at,
+                  value: item.value as number
+                }))}
+                height={150}
+              />
             ))}
           </div>
-        </div>
+        )}
+      </Panel>
+
+      <Panel title="Observation history" subtitle="Newest first; original device unit preserved">
+        {data.observations.length === 0 ? (
+          <EmptyState
+            title="No observations"
+            description="No observation has been received for this crew member."
+          />
+        ) : (
+          <DataTable
+            columns={observationColumns}
+            data={data.observations}
+            keyField="observation_id"
+            emptyMessage="No observations."
+          />
+        )}
+      </Panel>
+
+      <Panel title="Alerts" subtitle="Open, acknowledged, resolved and dismissed records">
+        {data.alerts.length === 0 ? (
+          <EmptyState
+            title="No alerts"
+            description="The analysis service produced no alert records for this crew member."
+          />
+        ) : (
+          <DataTable columns={alertColumns} data={data.alerts} keyField="alert_id" />
+        )}
+      </Panel>
+
+      <Panel title="Recommended actions" subtitle="Server-persisted action lifecycle">
+        {data.actions.length === 0 ? (
+          <EmptyState
+            title="No recommended actions"
+            description="No action record exists for this crew member."
+          />
+        ) : (
+          <DataTable columns={actionColumns} data={data.actions} keyField="action_id" />
+        )}
+      </Panel>
+
+      <Panel title="Analysis runs" subtitle="Persisted provenance; selecting a run does not re-execute analysis">
+        {data.analysisRuns.length === 0 ? (
+          <EmptyState
+            title="No analysis runs"
+            description="No analysis run is recorded for this crew member."
+          />
+        ) : (
+          <DataTable columns={runColumns} data={data.analysisRuns} keyField="run_id" />
+        )}
+      </Panel>
+
+      {dash && (
+        <Panel title="Data quality summary">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px' }}>
+            <Stat label="Quality status" value={dash.data_quality.status.toUpperCase()} />
+            <Stat label="Total observations" value={dash.data_quality.observation_count} />
+            <Stat label="Invalid" value={dash.data_quality.invalid_measurement_count} />
+            <Stat label="Questionable" value={dash.data_quality.questionable_measurement_count} />
+            <Stat label="Stale" value={dash.data_quality.stale_measurement_count} />
+            <Stat
+              label="Freshness"
+              value={<FreshnessBadge freshness={normaliseFreshness(dash.freshness)} />}
+            />
+          </div>
+        </Panel>
       )}
     </div>
   );
 };
+
 export default AstronautProfile;

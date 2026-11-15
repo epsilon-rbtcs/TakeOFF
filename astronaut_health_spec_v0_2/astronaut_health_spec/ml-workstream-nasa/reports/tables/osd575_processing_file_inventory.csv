@@ -1,0 +1,15 @@
+file_name,relative_path,extension,size_bytes,is_isa_metadata,is_assay_candidate
+a_OSD-575_analytical-chemistry_comprehensive-metabolic-panel_quest diagnostics.txt,a_OSD-575_analytical-chemistry_comprehensive-metabolic-panel_quest diagnostics.txt,.txt,7973,True,False
+a_OSD-575_immunoassay_multiplex_Alamar Biosciences.txt,a_OSD-575_immunoassay_multiplex_Alamar Biosciences.txt,.txt,10917,True,False
+a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HD71.txt,a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HD71.txt,.txt,11665,True,False
+a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HDCVD9.txt,a_OSD-575_immunoassay_multiplex_Eve Technologies Panel HDCVD9.txt,.txt,13037,True,False
+i_Investigation.txt,i_Investigation.txt,.txt,13753,True,False
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED.csv,.csv,25275,False,True
+LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv,LSDS-8_Comprehensive_Metabolic_Panel_CMP_TRANSFORMED.csv,.csv,8506,False,True
+LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.cardiovascular.EvePanel_SUBMITTED.csv,.csv,15241,False,True
+LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx,LSDS-8_Multiplex_serum.immune.AlamarPanel_SUBMITTED.xlsx,.xlsx,322799,False,True
+LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum.immune.AlamarPanel_TRANSFORMED.csv,.csv,141783,False,True
+LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED.csv,LSDS-8_Multiplex_serum.immune.EvePanel_SUBMITTED.csv,.csv,107418,False,True
+LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_cardiovascular_EvePanel_TRANSFORMED.csv,.csv,6207,False,True
+LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv,LSDS-8_Multiplex_serum_immune_EvePanel_TRANSFORMED.csv,.csv,41214,False,True
+s_OSD-575.txt,s_OSD-575.txt,.txt,13287,True,False

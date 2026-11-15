@@ -1,471 +1,632 @@
-// Ground Health Console — Messages & Medical Directives
-// Reliable delay-tolerant medical messaging with verifiable delivery lifecycle
+// Ground Health Console — Messages
+// Ground-authored messages and their append-only lifecycle. Delivery is only
+// shown when the corresponding lifecycle event exists; no receipt is inferred
+// from a successful request.
 
-import React, { useState } from 'react';
-import { useMessages } from '../api/hooks';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { MessageStatusBadge, SyntheticTag } from '../components/common/StatusBadge';
-import { PrimaryButton, SecondaryButton } from '../components/common/Buttons';
+import { useData } from '../context/DataContext';
+import { useMessages } from '../api/hooks';
+import type { MessageDto, MessageEventTypeDto, MessageTypeDto } from '../api/types';
+import { DataTable, Column } from '../components/common/DataTable';
+import { SecondaryButton, PrimaryButton } from '../components/common/Buttons';
 import { Modal } from '../components/common/Modal';
-import { TimeDisplay } from '../components/common/TimeDisplay';
-import { IconMessage } from '../components/common/Icons';
-import { Message, MessageStatus } from '../types';
+import { LoadingState } from '../components/common/LoadingState';
+import { EmptyState } from '../components/common/EmptyState';
+import { IconMessage, IconRefresh } from '../components/common/Icons';
+import {
+  ErrorNotice,
+  KeyValue,
+  PageHeader,
+  Panel,
+  Stat,
+  WarningNotice
+} from '../components/common/PageChrome';
 import { formatTimestamp } from '../utilities';
-import { DEMO_ASTRONAUT_ID, SECOND_ASTRONAUT_ID } from '../mock-data';
+
+const STATUSES = ['queued', 'transmitted', 'received', 'read', 'withdrawn', 'expired'] as const;
+
+const MESSAGE_TYPES: { value: MessageTypeDto; label: string }[] = [
+  { value: 'message', label: 'Message' },
+  { value: 'update', label: 'Crew update' },
+  { value: 'notification', label: 'Notification' }
+];
+
+function typeLabel(value: string): string {
+  return MESSAGE_TYPES.find((item) => item.value === value)?.label ?? value.replace(/_/g, ' ');
+}
+
+function LifecycleBadge({ status }: { status: string }) {
+  const closed = status === 'withdrawn' || status === 'expired';
+  const delivered = status === 'received' || status === 'read';
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '2px 6px',
+        fontSize: '10px',
+        fontWeight: delivered || closed ? 700 : 500,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        border: closed ? '1px dashed #000000' : '1px solid #000000',
+        backgroundColor: status === 'read' ? '#FFFF08' : status === 'withdrawn' ? '#E5E5E5' : '#FFFFFF'
+      }}
+    >
+      {status}
+    </span>
+  );
+}
 
 export const Messages: React.FC = () => {
-  const { user } = useAuth();
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const { user, isMedicalOfficer, isCrewMember, isAdministrator } = useAuth();
+  const { mission, missionId, astronauts, selectedAstronautId } = useData();
+
   const [astronautFilter, setAstronautFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
 
-  const { messages, composeMessage, updateMessageStatus } = useMessages({
-    status: statusFilter,
-    astronautId: astronautFilter
+  const scopedAstronautId = astronautFilter === 'all' ? null : astronautFilter;
+  const query = useMessages(scopedAstronautId);
+  const messages = query.data ?? [];
+
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [form, setForm] = useState({
+    astronautId: selectedAstronautId ?? '',
+    messageType: 'message' as MessageTypeDto,
+    title: '',
+    body: '',
+    version: '',
+    expiresAt: ''
   });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(messages[0] || null);
+  const filtered = useMemo(
+    () => messages.filter((row) => statusFilter === 'all' || row.status === statusFilter),
+    [messages, statusFilter]
+  );
 
-  // Compose Modal State
-  const [composeOpen, setComposeOpen] = useState<boolean>(false);
-  const [targetAstronautId, setTargetAstronautId] = useState<string>(DEMO_ASTRONAUT_ID);
-  const [subject, setSubject] = useState<string>('');
-  const [body, setBody] = useState<string>('');
-  const [priority, setPriority] = useState<'routine' | 'priority' | 'urgent'>('routine');
-  const [protocolRef, setProtocolRef] = useState<string>('');
+  const selected =
+    filtered.find((row) => row.message_id === selectedMessageId) ??
+    messages.find((row) => row.message_id === selectedMessageId) ??
+    null;
 
-  const handleSendMessage = () => {
-    if (!subject.trim() || !body.trim()) return;
+  const astronautName = (astronautId: string) =>
+    astronauts.find((item) => item.astronaut_id === astronautId)?.display_name ?? astronautId;
 
-    const recipientName =
-      targetAstronautId === DEMO_ASTRONAUT_ID ? 'Cmdr. Elena Vasquez' : 'Dr. James Chen';
+  const hasEvent = (message: MessageDto, eventType: string) =>
+    message.lifecycle.some((event) => event.event_type === eventType);
 
-    const created = composeMessage({
-      astronaut_id: targetAstronautId,
-      recipient_name: recipientName,
-      subject,
-      body,
-      priority,
-      protocol_reference: protocolRef || undefined
-    });
-
-    setSelectedMessage(created);
-    setComposeOpen(false);
-    setSubject('');
-    setBody('');
-    setProtocolRef('');
+  const resetFeedBack = () => {
+    setFeedback(null);
+    setMutationError(null);
   };
 
-  return (
-    <div>
-      {/* Title Bar */}
-      <div
-        style={{
-          borderBottom: '2px solid #000000',
-          paddingBottom: '16px',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start'
-        }}
-      >
+  const handleSend = async () => {
+    if (!missionId) return;
+    if (!form.astronautId) {
+      setMutationError('Select a recipient crew member.');
+      return;
+    }
+    if (!form.title.trim() || !form.body.trim()) {
+      setMutationError('Title and body are required.');
+      return;
+    }
+    resetFeedBack();
+    setBusy('send');
+    const result = await query.sendMessage({
+      missionId,
+      astronautId: form.astronautId,
+      title: form.title.trim(),
+      body: form.body.trim(),
+      messageType: form.messageType,
+      version: form.version.trim() || undefined,
+      expiresAt: form.expiresAt ? new Date(form.expiresAt).toISOString() : undefined
+    });
+    setBusy(null);
+    if (result.error || !result.data) {
+      setMutationError(result.error?.message ?? 'The Ground API did not create the message.');
+      return;
+    }
+    setFeedback(`Message created in state ${result.data.status.toUpperCase()}. No delivery has been recorded.`);
+    setComposeOpen(false);
+    setForm({
+      astronautId: form.astronautId,
+      messageType: 'message',
+      title: '',
+      body: '',
+      version: '',
+      expiresAt: ''
+    });
+    setSelectedMessageId(result.data.message_id);
+    query.refetch();
+  };
+
+  const handleEvent = async (message: MessageDto, eventType: MessageEventTypeDto) => {
+    resetFeedBack();
+    setBusy(eventType);
+    const result = await query.recordMessageEvent(message.message_id, eventType);
+    setBusy(null);
+    if (result.error) {
+      setMutationError(result.error.message);
+      return;
+    }
+    setFeedback(
+      `Lifecycle event "${eventType}" recorded. The message is now ${String(
+        result.data?.message_status ?? 'updated'
+      ).toUpperCase()}.`
+    );
+    query.refetch();
+  };
+
+  const columns: Column<MessageDto>[] = [
+    {
+      key: 'title',
+      header: 'Message',
+      render: (row) => (
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-            <span
-              style={{
-                fontSize: '10px',
-                fontWeight: 800,
-                letterSpacing: '0.08em',
-                backgroundColor: '#000000',
-                color: '#FFFFFF',
-                padding: '2px 6px',
-                textTransform: 'uppercase'
-              }}
-            >
-              STORE & FORWARD COMMS
-            </span>
-            <SyntheticTag compact />
+          <div style={{ fontWeight: 800 }}>{row.title}</div>
+          <div style={{ fontSize: '9px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.55)' }}>
+            {row.message_id.slice(0, 8)}…
           </div>
-          <h1
-            style={{
-              fontSize: '24px',
-              fontWeight: 900,
-              letterSpacing: '0.03em',
-              textTransform: 'uppercase',
-              margin: 0
-            }}
-          >
-            Messages & Medical Directives
-          </h1>
-          <p style={{ fontSize: '12px', color: 'rgba(0,0,0,0.6)', margin: '4px 0 0 0' }}>
-            Authorized clinical communication channel with explicit transmission and delivery acknowledgements.
-          </p>
         </div>
+      )
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (row) => typeLabel(row.message_type)
+    },
+    {
+      key: 'astronaut',
+      header: 'Recipient',
+      render: (row) => astronautName(row.astronaut_id)
+    },
+    {
+      key: 'status',
+      header: 'Lifecycle',
+      render: (row) => <LifecycleBadge status={row.status} />
+    },
+    {
+      key: 'created',
+      header: 'Created',
+      render: (row) => (row.created_at ? formatTimestamp(row.created_at) : '—')
+    },
+    {
+      key: 'expires',
+      header: 'Expires',
+      render: (row) => (row.expires_at ? formatTimestamp(row.expires_at) : 'No expiry')
+    }
+  ];
 
-        <PrimaryButton icon={<IconMessage size={16} />} onClick={() => setComposeOpen(true)}>
-          COMPOSE MEDICAL DISPATCH
-        </PrimaryButton>
+  if (isAdministrator) {
+    return (
+      <div>
+        <PageHeader eyebrow="Records" title="Messages" />
+        <EmptyState
+          title="Message access is not granted to administrators"
+          description="The Ground API withholds ground-to-crew message content from administrator identities. No cached or synthetic message list is shown."
+        />
       </div>
+    );
+  }
 
-      {/* Communications Blackout Caution */}
-      <div
-        style={{
-          border: '1px solid #000000',
-          backgroundColor: '#FAFAFA',
-          padding: '10px 14px',
-          marginBottom: '20px',
-          fontSize: '11px',
-          lineHeight: 1.4
-        }}
-      >
-        <strong>PROTOCOL RULE:</strong> Messages dispatched during orbital blackout remain in ground staging queue until next confirmed downlink pass. Interface strictly distinguishes <em>Sent</em> (uplink broadcast) from <em>Delivered</em> (client confirmed receipt) and <em>Acknowledged</em> (crew read receipt).
-      </div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <PageHeader
+        eyebrow="Records"
+        title="Messages"
+        description={
+          mission
+            ? `Ground-authored messages for ${mission.mission_code}. A message is reported as delivered only when a lifecycle event records it.`
+            : 'Ground-authored messages in the authenticated mission scope.'
+        }
+        actions={
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <SecondaryButton size="sm" onClick={query.refetch} icon={<IconRefresh size={12} />}>
+              Reload
+            </SecondaryButton>
+            <PrimaryButton
+              size="sm"
+              icon={<IconMessage size={14} />}
+              onClick={() => {
+                resetFeedBack();
+                setForm((current) => ({
+                  ...current,
+                  astronautId: current.astronautId || selectedAstronautId || astronauts[0]?.astronaut_id || ''
+                }));
+                setComposeOpen(true);
+              }}
+              disabled={!isMedicalOfficer || !missionId}
+            >
+              Compose message
+            </PrimaryButton>
+          </div>
+        }
+      />
 
-      {/* Main Split Layout: Message Thread List & Message Detail */}
+      {!isMedicalOfficer && !isCrewMember && (
+        <WarningNotice
+          title="Read-only role"
+          message="This identity cannot create messages."
+        />
+      )}
+      {isCrewMember && (
+        <WarningNotice
+          title="Crew scope"
+          message="A crew identity may read its own messages and record crew-side lifecycle events. Ground-authored message creation is restricted to medical officers."
+        />
+      )}
+      {query.error && (
+        <ErrorNotice title="Messages unavailable" message={query.error.message} details={query.error.details} />
+      )}
+      {mutationError && <ErrorNotice title="Message operation" message={mutationError} />}
+      {feedback && (
+        <div
+          style={{
+            border: '1px solid #000000',
+            backgroundColor: 'rgba(255,255,8,0.2)',
+            padding: '7px 10px',
+            fontSize: '11px',
+            fontWeight: 700
+          }}
+        >
+          {feedback}
+        </div>
+      )}
+
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '420px 1fr',
-          gap: '20px',
-          minHeight: '520px'
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: '8px'
         }}
       >
-        {/* Left Column: Messages Thread List */}
-        <div
-          style={{
-            border: '2px solid #000000',
-            backgroundColor: '#FFFFFF',
-            display: 'flex',
-            flexDirection: 'column'
-          }}
-        >
-          {/* Thread Filters */}
-          <div
-            style={{
-              padding: '10px 12px',
-              borderBottom: '1px solid #000000',
-              backgroundColor: '#FAFAFA',
-              display: 'flex',
-              gap: '8px'
-            }}
-          >
+        <Stat label="Messages" value={messages.length} emphasis />
+        <Stat label="Queued" value={messages.filter((row) => row.status === 'queued').length} />
+        <Stat label="Transmitted" value={messages.filter((row) => row.status === 'transmitted').length} />
+        <Stat
+          label="Received / read"
+          value={messages.filter((row) => row.status === 'received' || row.status === 'read').length}
+        />
+        <Stat
+          label="Closed"
+          value={messages.filter((row) => row.status === 'withdrawn' || row.status === 'expired').length}
+        />
+      </div>
+
+      <Panel title="Filters" bodyStyle={{ padding: '10px 12px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            Lifecycle
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                border: '1px solid #000000',
-                fontSize: '11px',
-                fontWeight: 600
-              }}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              style={{ padding: '5px 7px', border: '1px solid #000000', fontSize: '11px' }}
             >
-              <option value="all">All Statuses</option>
-              <option value="sent">Sent / In Flight</option>
-              <option value="delivered">Delivered</option>
-              <option value="read">Read</option>
-              <option value="acknowledged">Acknowledged</option>
-              <option value="draft">Drafts</option>
+              <option value="all">All</option>
+              {STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
             </select>
-
-            <select
-              value={astronautFilter}
-              onChange={(e) => setAstronautFilter(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '4px 8px',
-                border: '1px solid #000000',
-                fontSize: '11px',
-                fontWeight: 600
-              }}
-            >
-              <option value="all">All Astronauts</option>
-              <option value={DEMO_ASTRONAUT_ID}>Cmdr. Elena Vasquez</option>
-              <option value={SECOND_ASTRONAUT_ID}>Dr. James Chen</option>
-            </select>
-          </div>
-
-          {/* List items */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {messages.map((msg) => {
-              const isSelected = selectedMessage?.message_id === msg.message_id;
-              const isFromCrew = msg.sender_role === 'crew_member';
-
-              return (
-                <div
-                  key={msg.message_id}
-                  onClick={() => setSelectedMessage(msg)}
-                  style={{
-                    padding: '12px 14px',
-                    borderBottom: '1px solid rgba(0,0,0,0.1)',
-                    backgroundColor: isSelected ? 'rgba(255, 255, 8, 0.25)' : '#FFFFFF',
-                    borderLeft: isSelected ? '4px solid #000000' : '4px solid transparent',
-                    cursor: 'pointer',
-                    transition: 'background-color 0.08s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 8, 0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) e.currentTarget.style.backgroundColor = '#FFFFFF';
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
-                    <span
-                      style={{
-                        fontSize: '9px',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        padding: '1px 5px',
-                        backgroundColor: isFromCrew ? '#000000' : '#E5E5E5',
-                        color: isFromCrew ? '#FFFF08' : '#000000'
-                      }}
-                    >
-                      {isFromCrew ? 'DOWNLINK FROM CREW' : 'GROUND DISPATCH'}
-                    </span>
-                    <span style={{ fontSize: '10px', color: 'rgba(0,0,0,0.5)', fontFamily: 'monospace' }}>
-                      {formatTimestamp(msg.created_at, 'relative')}
-                    </span>
-                  </div>
-
-                  <div style={{ fontWeight: 800, fontSize: '12px', marginBottom: '2px', lineHeight: 1.3 }}>
-                    {msg.subject}
-                  </div>
-
-                  <div style={{ fontSize: '11px', color: 'rgba(0,0,0,0.6)', marginBottom: '6px' }}>
-                    {isFromCrew ? `From: ${msg.sender_name}` : `To: ${msg.recipient_name}`}
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <MessageStatusBadge status={msg.status} />
-                    {msg.priority !== 'routine' && (
-                      <span style={{ fontSize: '9px', fontWeight: 800, color: '#000000', backgroundColor: '#FFFF08', padding: '1px 4px' }}>
-                        {msg.priority.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          </label>
+          {!isCrewMember && (
+            <label style={{ fontSize: '10px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              Crew member
+              <select
+                value={astronautFilter}
+                onChange={(event) => {
+                  setAstronautFilter(event.target.value);
+                  setSelectedMessageId(null);
+                }}
+                style={{ padding: '5px 7px', border: '1px solid #000000', fontSize: '11px', minWidth: '190px' }}
+              >
+                <option value="all">All crew in mission</option>
+                {astronauts.map((astronaut) => (
+                  <option key={astronaut.astronaut_id} value={astronaut.astronaut_id}>
+                    {astronaut.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <span style={{ fontSize: '10px', marginLeft: 'auto' }}>
+            {filtered.length} of {messages.length} message(s) · signed in as{' '}
+            {user?.role.replace(/_/g, ' ') ?? 'unknown'}
+          </span>
         </div>
+      </Panel>
 
-        {/* Right Column: Selected Message Detail & Lifecycle */}
-        {selectedMessage ? (
+      <Panel
+        title="Message register"
+        subtitle="Select a message to inspect content and its append-only lifecycle"
+        actions={<span style={{ fontSize: '9px' }}>{query.loading ? 'LOADING…' : `${filtered.length} RECORD(S)`}</span>}
+      >
+        {query.loading ? (
+          <LoadingState height={180} message="Loading messages..." />
+        ) : messages.length === 0 ? (
+          <EmptyState
+            title="No messages"
+            description="The Ground API returned no message for this mission and crew selection."
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={filtered}
+            keyField="message_id"
+            selectedRowKey={selectedMessageId ?? undefined}
+            onRowClick={(row) => {
+              setSelectedMessageId(row.message_id);
+              resetFeedBack();
+            }}
+            emptyMessage="No message matches the current filters."
+          />
+        )}
+      </Panel>
+
+      {selected && (
+        <Panel
+          title="Message detail"
+          subtitle={typeLabel(selected.message_type)}
+          actions={
+            <SecondaryButton size="sm" onClick={() => setSelectedMessageId(null)}>
+              Close
+            </SecondaryButton>
+          }
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            <LifecycleBadge status={selected.status} />
+            <span style={{ fontSize: '10px' }}>
+              Created {selected.created_at ? formatTimestamp(selected.created_at) : 'at an unrecorded time'}
+            </span>
+            {selected.simulated && (
+              <span
+                style={{
+                  fontSize: '9px',
+                  fontWeight: 800,
+                  border: '1px dashed #000000',
+                  padding: '1px 5px',
+                  textTransform: 'uppercase'
+                }}
+              >
+                Simulated message
+              </span>
+            )}
+          </div>
+
+          <h2 style={{ fontSize: '16px', fontWeight: 900, margin: '4px 0 8px 0' }}>{selected.title}</h2>
+
+          <KeyValue label="Message ID" value={selected.message_id} mono />
+          <KeyValue label="Mission ID" value={selected.mission_id} mono />
+          <KeyValue label="Recipient" value={astronautName(selected.astronaut_id)} />
+          <KeyValue label="Recipient ID" value={selected.astronaut_id} mono />
+          <KeyValue label="Sender user" value={selected.sender_user_id} mono />
+          <KeyValue label="Message type" value={typeLabel(selected.message_type)} />
+          <KeyValue label="Version" value={selected.version ?? 'Not set'} mono />
+          <KeyValue label="Created" value={selected.created_at ? formatTimestamp(selected.created_at) : '—'} />
+          <KeyValue label="Expires" value={selected.expires_at ? formatTimestamp(selected.expires_at) : 'No expiry'} />
+
           <div
             style={{
-              border: '2px solid #000000',
-              backgroundColor: '#FFFFFF',
-              padding: '24px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
-              boxShadow: '4px 4px 0px #000000'
+              marginTop: '10px',
+              border: '1px solid rgba(0,0,0,0.2)',
+              backgroundColor: '#FAFAFA',
+              padding: '12px',
+              fontSize: '12px',
+              lineHeight: 1.6,
+              whiteSpace: 'pre-wrap'
             }}
           >
-            <div>
-              {/* Message Header */}
-              <div
-                style={{
-                  borderBottom: '2px solid #000000',
-                  paddingBottom: '14px',
-                  marginBottom: '16px'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <MessageStatusBadge status={selectedMessage.status} />
-                    {selectedMessage.priority !== 'routine' && (
-                      <span style={{ fontSize: '10px', fontWeight: 800, backgroundColor: '#FFFF08', padding: '2px 6px', border: '1px solid #000000' }}>
-                        {selectedMessage.priority.toUpperCase()} PRIORITY
-                      </span>
-                    )}
-                  </div>
-                  <span style={{ fontSize: '11px', fontFamily: 'monospace', color: 'rgba(0,0,0,0.5)' }}>
-                    ID: {selectedMessage.message_id}
-                  </span>
-                </div>
+            {selected.body}
+          </div>
 
-                <h2 style={{ fontSize: '18px', fontWeight: 900, textTransform: 'uppercase', margin: '4px 0 10px 0' }}>
-                  {selectedMessage.subject}
-                </h2>
-
-                <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  <div>
-                    <strong style={{ textTransform: 'uppercase', fontSize: '11px' }}>Sender:</strong>{' '}
-                    {selectedMessage.sender_name} ({selectedMessage.sender_role})
-                  </div>
-                  <div>
-                    <strong style={{ textTransform: 'uppercase', fontSize: '11px' }}>Recipient:</strong>{' '}
-                    {selectedMessage.recipient_name}
-                  </div>
-                  {selectedMessage.protocol_reference && (
-                    <div>
-                      <strong style={{ textTransform: 'uppercase', fontSize: '11px' }}>Protocol Reference:</strong>{' '}
-                      <code>{selectedMessage.protocol_reference}</code>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Message Body */}
-              <div
-                style={{
-                  fontSize: '13px',
-                  lineHeight: 1.6,
-                  padding: '16px',
-                  backgroundColor: '#FAFAFA',
-                  border: '1px solid rgba(0,0,0,0.15)',
-                  marginBottom: '20px',
-                  whiteSpace: 'pre-wrap'
-                }}
-              >
-                {selectedMessage.body}
-              </div>
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', marginBottom: '5px' }}>
+              LIFECYCLE EVENTS ({selected.lifecycle.length})
             </div>
-
-            {/* Delivery Lifecycle Audited Timeline */}
-            <div>
-              <h4 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', marginBottom: '8px' }}>
-                Audited Transmission & Delivery Lifecycle
-              </h4>
-
-              <div style={{ border: '1px solid #000000', backgroundColor: '#FFFFFF', fontSize: '11px' }}>
-                {selectedMessage.events.map((ev, i) => (
+            {selected.lifecycle.length === 0 ? (
+              <div style={{ fontSize: '10px', border: '1px dashed #000000', padding: '8px' }}>
+                No lifecycle event has been recorded. The message remains in its initial queued state; no
+                delivery is claimed.
+              </div>
+            ) : (
+              <div style={{ border: '1px solid #000000' }}>
+                {selected.lifecycle.map((event, index) => (
                   <div
-                    key={ev.event_id}
+                    key={event.event_id}
                     style={{
-                      padding: '8px 12px',
-                      borderBottom: i !== selectedMessage.events.length - 1 ? '1px solid rgba(0,0,0,0.1)' : 'none',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                      padding: '7px 10px',
+                      borderBottom:
+                        index === selected.lifecycle.length - 1 ? 'none' : '1px solid rgba(0,0,0,0.1)',
+                      fontSize: '10px'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontWeight: 800, textTransform: 'uppercase', width: '110px' }}>
-                        {ev.status}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                      <span style={{ fontWeight: 800, textTransform: 'uppercase' }}>{event.event_type}</span>
+                      <span style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+                        {event.recorded_at ? formatTimestamp(event.recorded_at) : '—'}
                       </span>
-                      {ev.note && <span style={{ color: 'rgba(0,0,0,0.6)' }}>{ev.note}</span>}
                     </div>
-                    <span style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.5)' }}>
-                      {formatTimestamp(ev.timestamp, 'full')}
-                    </span>
+                    <div style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+                      actor {event.actor_id}
+                    </div>
+                    {event.client_created_at && (
+                      <div style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+                        client reported {formatTimestamp(event.client_created_at)}
+                      </div>
+                    )}
+                    {event.occurred_at && event.occurred_at !== event.client_created_at && (
+                      <div style={{ fontFamily: 'monospace', color: 'rgba(0,0,0,0.6)' }}>
+                        occurred {formatTimestamp(event.occurred_at)}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
+            )}
+          </div>
 
-              {/* Simulation Action to advance status if Sent */}
-              {selectedMessage.status === 'sent' && (
-                <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+          {!['withdrawn', 'expired'].includes(selected.status) && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.06em', marginBottom: '5px' }}>
+                RECORD A LIFECYCLE EVENT
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {isMedicalOfficer && !hasEvent(selected, 'transmitted') && (
+                  <PrimaryButton
+                    size="sm"
+                    onClick={() => handleEvent(selected, 'transmitted')}
+                    disabled={busy !== null}
+                  >
+                    Record transmitted
+                  </PrimaryButton>
+                )}
+                {isMedicalOfficer && (
                   <SecondaryButton
                     size="sm"
-                    onClick={() => updateMessageStatus(selectedMessage.message_id, 'delivered', 'Telemetry Relay Confirmation')}
+                    onClick={() => handleEvent(selected, 'expired')}
+                    disabled={busy !== null}
                   >
-                    Simulate Downlink Delivery Receipt
+                    Mark expired
                   </SecondaryButton>
-                </div>
-              )}
+                )}
+                {isCrewMember && !hasEvent(selected, 'received_by_crew') && (
+                  <PrimaryButton
+                    size="sm"
+                    onClick={() => handleEvent(selected, 'received_by_crew')}
+                    disabled={busy !== null}
+                  >
+                    Record received by crew
+                  </PrimaryButton>
+                )}
+                {isCrewMember && !hasEvent(selected, 'read') && (
+                  <SecondaryButton size="sm" onClick={() => handleEvent(selected, 'read')} disabled={busy !== null}>
+                    Record read
+                  </SecondaryButton>
+                )}
+                {(isMedicalOfficer || isCrewMember) && (
+                  <SecondaryButton
+                    size="sm"
+                    onClick={() => handleEvent(selected, 'withdrawn')}
+                    disabled={busy !== null}
+                  >
+                    Withdraw
+                  </SecondaryButton>
+                )}
+              </div>
+              <p style={{ fontSize: '9px', color: 'rgba(0,0,0,0.6)', margin: '6px 0 0 0' }}>
+                The server decides which actor may record which event. Ground officers record ground-side
+                events; crew identities record crew-side events. Nothing here simulates a downlink.
+              </p>
             </div>
-          </div>
-        ) : (
-          <div style={{ border: '2px solid #000000', padding: '32px', textAlign: 'center', color: 'rgba(0,0,0,0.5)' }}>
-            Select a message thread from the left to inspect content and delivery lifecycle.
-          </div>
-        )}
-      </div>
+          )}
+        </Panel>
+      )}
 
-      {/* Compose Message Modal */}
       <Modal
         isOpen={composeOpen}
         onClose={() => setComposeOpen(false)}
-        title="Compose Medical Directive / Dispatch"
-        subtitle="Staged for uplink on next confirmed line-of-sight pass"
+        title="Compose ground message"
+        subtitle="Persisted as a new message in queued state; no delivery is implied"
         footer={
           <>
             <SecondaryButton size="sm" onClick={() => setComposeOpen(false)}>
-              CANCEL
+              Cancel
             </SecondaryButton>
-            <PrimaryButton size="sm" onClick={handleSendMessage}>
-              ENQUEUE FOR UPLINK TRANSMISSION
+            <PrimaryButton size="sm" onClick={handleSend} disabled={busy !== null}>
+              {busy === 'send' ? 'Creating…' : 'Create message'}
             </PrimaryButton>
           </>
         }
       >
-        <div>
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              Target Astronaut
-            </label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <label style={{ fontSize: '10px', fontWeight: 700 }}>
+            Recipient
             <select
-              value={targetAstronautId}
-              onChange={(e) => setTargetAstronautId(e.target.value)}
-              style={{ width: '100%', padding: '8px', border: '1px solid #000000', fontSize: '12px' }}
+              value={form.astronautId}
+              onChange={(event) => setForm((current) => ({ ...current, astronautId: event.target.value }))}
+              style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px' }}
             >
-              <option value={DEMO_ASTRONAUT_ID}>Cmdr. Elena Vasquez (Mission Commander)</option>
-              <option value={SECOND_ASTRONAUT_ID}>Dr. James Chen (Flight Engineer / Medical Specialist)</option>
+              <option value="">Select crew member</option>
+              {astronauts.map((astronaut) => (
+                <option key={astronaut.astronaut_id} value={astronaut.astronaut_id}>
+                  {astronaut.display_name} · {astronaut.astronaut_code}
+                </option>
+              ))}
             </select>
-          </div>
+          </label>
 
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              Subject Heading
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="e.g. Countermeasure Adjustment / Rest Schedule Protocol"
-              style={{ width: '100%', padding: '8px', border: '1px solid #000000', fontSize: '12px' }}
-              required
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-            <div>
-              <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                Transmission Priority
-              </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <label style={{ fontSize: '10px', fontWeight: 700 }}>
+              Message type
               <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as any)}
-                style={{ width: '100%', padding: '8px', border: '1px solid #000000', fontSize: '12px' }}
+                value={form.messageType}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, messageType: event.target.value as MessageTypeDto }))
+                }
+                style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px' }}
               >
-                <option value="routine">Routine — Next scheduled pass</option>
-                <option value="priority">Priority — First available packet</option>
-                <option value="urgent">Urgent — Immediate interrupt</option>
+                {MESSAGE_TYPES.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
               </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-                Protocol Reference (Optional)
-              </label>
-              <input
-                type="text"
-                value={protocolRef}
-                onChange={(e) => setProtocolRef(e.target.value)}
-                placeholder="e.g. MED-S-12"
-                style={{ width: '100%', padding: '8px', border: '1px solid #000000', fontSize: '12px' }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <label style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', display: 'block', marginBottom: '4px' }}>
-              Clinical Message Directive
             </label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={5}
-              placeholder="Enter instructions, schedule modifications, or follow-up guidance..."
-              style={{ width: '100%', padding: '8px', border: '1px solid #000000', fontSize: '12px' }}
-              required
-            />
+            <label style={{ fontSize: '10px', fontWeight: 700 }}>
+              Version (optional)
+              <input
+                value={form.version}
+                maxLength={120}
+                onChange={(event) => setForm((current) => ({ ...current, version: event.target.value }))}
+                style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px' }}
+              />
+            </label>
           </div>
+
+          <label style={{ fontSize: '10px', fontWeight: 700 }}>
+            Title
+            <input
+              value={form.title}
+              maxLength={200}
+              onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
+              style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px' }}
+            />
+          </label>
+
+          <label style={{ fontSize: '10px', fontWeight: 700 }}>
+            Body
+            <textarea
+              value={form.body}
+              maxLength={10000}
+              rows={5}
+              onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+              style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px', fontFamily: 'inherit' }}
+            />
+          </label>
+
+          <label style={{ fontSize: '10px', fontWeight: 700 }}>
+            Expires (optional)
+            <input
+              type="datetime-local"
+              value={form.expiresAt}
+              onChange={(event) => setForm((current) => ({ ...current, expiresAt: event.target.value }))}
+              style={{ display: 'block', width: '100%', marginTop: '3px', padding: '6px', border: '1px solid #000000', fontSize: '11px' }}
+            />
+          </label>
+
+          <p style={{ fontSize: '9px', color: 'rgba(0,0,0,0.6)', margin: 0 }}>
+            The Ground API assigns the message identifier and initial lifecycle. Delivery and read events must
+            be recorded separately, by the identity authorized for that side.
+          </p>
         </div>
       </Modal>
     </div>
   );
 };
+
 export default Messages;

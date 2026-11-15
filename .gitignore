@@ -62,8 +62,10 @@ env/
 **/data/raw/
 **/data/interim/
 **/data/processed/
+**/data/splits/
 **/models/checkpoints/
 **/models/preprocessors/
+**/models/metadata/
 **/models/*.joblib
 **/models/*.metadata.json
 **/logs/
@@ -74,6 +76,12 @@ wandb/
 tensorboard/
 checkpoints/
 artifacts/
+
+# Infrastructure and deployment state
+.terraform/
+*.tfstate
+*.tfstate.*
+.serverless/
 
 # Large generated/model artifacts
 *.bin

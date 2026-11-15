@@ -1,77 +1,245 @@
-// Ground Health Console — Data Mode Context
-// Provides seamless toggle between Live FastAPI backend mode and Synthetic Mock mode
+// Ground Health Console — Live mission context
+// Loads service health, the authenticated mission scope and enrolled crew from
+// the Ground API. Nothing here falls back to synthetic demo records.
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { DataMode } from '../types';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { useAuth } from './AuthContext';
+import { apiClient } from '../api/client';
+import type {
+  AstronautDto,
+  CommunicationStatusDto,
+  HealthDto,
+  MissionDto
+} from '../api/types';
+
+export type ApiStatus = 'checking' | 'connected' | 'degraded' | 'offline';
 
 interface DataContextType {
-  mode: DataMode;
-  setMode: (mode: DataMode) => void;
-  isMock: boolean;
-  toggleMode: () => void;
-  apiStatus: 'connected' | 'offline' | 'checking';
-  checkApiHealth: () => Promise<boolean>;
+  apiStatus: ApiStatus;
+  health: HealthDto | null;
+  healthError: string | null;
+  missions: MissionDto[];
+  missionsLoading: boolean;
+  missionError: string | null;
+  mission: MissionDto | null;
+  missionId: string | null;
+  selectMission: (missionId: string) => void;
+  astronauts: AstronautDto[];
+  crewLoading: boolean;
+  crewError: string | null;
+  selectedAstronautId: string | null;
+  selectAstronaut: (astronautId: string | null) => void;
+  selectedAstronaut: AstronautDto | null;
+  commStatus: CommunicationStatusDto | null;
+  commError: string | null;
+  commSupported: boolean;
+  lastRefreshedAt: string | null;
+  refreshAll: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-const MODE_STORAGE_KEY = 'ghc_data_mode';
+const MISSION_STORAGE_KEY = 'ghc_selected_mission';
+const ASTRONAUT_STORAGE_KEY = 'ghc_selected_astronaut';
 
 export const DataProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [mode, setModeState] = useState<DataMode>(() => {
-    const saved = localStorage.getItem(MODE_STORAGE_KEY);
-    return saved === 'api' ? 'api' : 'mock';
-  });
+  const { user, isMedicalOfficer, isCrewMember } = useAuth();
 
-  const [apiStatus, setApiStatus] = useState<'connected' | 'offline' | 'checking'>('checking');
+  const [apiStatus, setApiStatus] = useState<ApiStatus>('checking');
+  const [health, setHealth] = useState<HealthDto | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
-  const checkApiHealth = async (): Promise<boolean> => {
-    setApiStatus('checking');
-    try {
-      const baseUrl =
-        (import.meta as any).env?.VITE_API_URL ?? 'http://127.0.0.1:8000/api/v1';
-      // Attempt quick probe to auth endpoint
-      const res = await fetch(`${baseUrl}/auth/demo-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: '', password: '' })
-      });
-      // 401 means endpoint is alive and responsive
-      if (res.status === 401 || res.ok) {
-        setApiStatus('connected');
-        return true;
-      }
-      setApiStatus('offline');
-      return false;
-    } catch {
-      setApiStatus('offline');
-      return false;
-    }
-  };
+  const [missions, setMissions] = useState<MissionDto[]>([]);
+  const [missionsLoading, setMissionsLoading] = useState<boolean>(false);
+  const [missionError, setMissionError] = useState<string | null>(null);
+  const [missionId, setMissionId] = useState<string | null>(null);
 
+  const [astronauts, setAstronauts] = useState<AstronautDto[]>([]);
+  const [crewLoading, setCrewLoading] = useState<boolean>(false);
+  const [crewError, setCrewError] = useState<string | null>(null);
+  const [selectedAstronautId, setSelectedAstronautId] = useState<string | null>(null);
+
+  const [commStatus, setCommStatus] = useState<CommunicationStatusDto | null>(null);
+  const [commError, setCommError] = useState<string | null>(null);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState<number>(0);
+
+  const accessToken = user?.is_demo ? null : user?.access_token ?? null;
+  const sessionAstronautId = user?.astronaut_id ?? null;
+  const commSupported = isMedicalOfficer || isCrewMember;
+
+  // Service health is public and is also the honest connectivity indicator.
   useEffect(() => {
-    checkApiHealth();
+    let cancelled = false;
+    setApiStatus('checking');
+    apiClient.getHealth().then((result) => {
+      if (cancelled) return;
+      if (result.error || !result.data) {
+        setApiStatus('offline');
+        setHealth(null);
+        setHealthError(result.error?.message ?? 'No health payload was returned.');
+        return;
+      }
+      setHealth(result.data);
+      setHealthError(null);
+      setApiStatus(result.data.status === 'ok' ? 'connected' : 'degraded');
+      setLastRefreshedAt(new Date().toISOString());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  // Mission scope and crew roster belong to the authenticated session.
+  useEffect(() => {
+    if (!accessToken) {
+      setMissions([]);
+      setAstronauts([]);
+      setMissionId(null);
+      setSelectedAstronautId(null);
+      setCommStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMissionsLoading(true);
+    setCrewLoading(true);
+    setMissionError(null);
+    setCrewError(null);
+
+    apiClient.listMissions().then((result) => {
+      if (cancelled) return;
+      if (result.error || !result.data) {
+        setMissions([]);
+        setMissionError(result.error?.message ?? 'Mission scope could not be loaded.');
+        setMissionsLoading(false);
+        return;
+      }
+      setMissions(result.data);
+      setMissionsLoading(false);
+      setLastRefreshedAt(new Date().toISOString());
+    });
+
+    apiClient.listAstronauts().then((result) => {
+      if (cancelled) return;
+      if (result.error || !result.data) {
+        setAstronauts([]);
+        setCrewError(result.error?.message ?? 'Crew roster could not be loaded.');
+        setCrewLoading(false);
+        return;
+      }
+      setAstronauts(result.data);
+      setCrewLoading(false);
+      setLastRefreshedAt(new Date().toISOString());
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, reloadKey]);
+
+  // Keep the selected mission valid for the current scope.
+  useEffect(() => {
+    if (!accessToken || missions.length === 0) return;
+    setMissionId((current) => {
+      if (current && missions.some((item) => item.mission_id === current)) return current;
+      const saved = sessionStorage.getItem(MISSION_STORAGE_KEY);
+      const savedMatch = saved ? missions.find((item) => item.mission_id === saved) : undefined;
+      const chosen = savedMatch ?? missions[0];
+      sessionStorage.setItem(MISSION_STORAGE_KEY, chosen.mission_id);
+      return chosen.mission_id;
+    });
+  }, [accessToken, missions]);
+
+  // Crew-member identities are pinned to their own record; ground roles choose.
+  useEffect(() => {
+    if (!accessToken) return;
+    if (sessionAstronautId) {
+      setSelectedAstronautId(sessionAstronautId);
+      return;
+    }
+    if (astronauts.length === 0) return;
+    setSelectedAstronautId((current) => {
+      if (current && astronauts.some((item) => item.astronaut_id === current)) return current;
+      const saved = sessionStorage.getItem(ASTRONAUT_STORAGE_KEY);
+      const savedMatch = saved ? astronauts.find((item) => item.astronaut_id === saved) : undefined;
+      const chosen = savedMatch ?? astronauts[0];
+      sessionStorage.setItem(ASTRONAUT_STORAGE_KEY, chosen.astronaut_id);
+      return chosen.astronaut_id;
+    });
+  }, [accessToken, sessionAstronautId, astronauts]);
+
+  // Reported adapter state is fetched, never inferred from a successful request.
+  useEffect(() => {
+    if (!accessToken || !commSupported || !missionId || !selectedAstronautId) {
+      setCommStatus(null);
+      setCommError(null);
+      return;
+    }
+    let cancelled = false;
+    apiClient
+      .getCommunicationStatus({ astronautId: selectedAstronautId, missionId })
+      .then((result) => {
+        if (cancelled) return;
+        if (result.error || !result.data) {
+          setCommStatus(null);
+          setCommError(result.error?.message ?? 'Communication state could not be loaded.');
+          return;
+        }
+        setCommStatus(result.data);
+        setCommError(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, commSupported, missionId, selectedAstronautId, reloadKey]);
+
+  const selectMission = useCallback((nextMissionId: string) => {
+    setMissionId(nextMissionId);
+    sessionStorage.setItem(MISSION_STORAGE_KEY, nextMissionId);
   }, []);
 
-  const setMode = (newMode: DataMode) => {
-    setModeState(newMode);
-    localStorage.setItem(MODE_STORAGE_KEY, newMode);
-  };
+  const selectAstronaut = useCallback((nextAstronautId: string | null) => {
+    setSelectedAstronautId(nextAstronautId);
+    if (nextAstronautId) {
+      sessionStorage.setItem(ASTRONAUT_STORAGE_KEY, nextAstronautId);
+    } else {
+      sessionStorage.removeItem(ASTRONAUT_STORAGE_KEY);
+    }
+  }, []);
 
-  const toggleMode = () => {
-    const newMode = mode === 'mock' ? 'api' : 'mock';
-    setMode(newMode);
-  };
+  const refreshAll = useCallback(() => setReloadKey((value) => value + 1), []);
+
+  const mission = missionId
+    ? missions.find((item) => item.mission_id === missionId) ?? null
+    : null;
+  const selectedAstronaut = selectedAstronautId
+    ? astronauts.find((item) => item.astronaut_id === selectedAstronautId) ?? null
+    : null;
 
   return (
     <DataContext.Provider
       value={{
-        mode,
-        setMode,
-        isMock: mode === 'mock',
-        toggleMode,
         apiStatus,
-        checkApiHealth
+        health,
+        healthError,
+        missions,
+        missionsLoading,
+        missionError,
+        mission,
+        missionId,
+        selectMission,
+        astronauts,
+        crewLoading,
+        crewError,
+        selectedAstronautId,
+        selectAstronaut,
+        selectedAstronaut,
+        commStatus,
+        commError,
+        commSupported,
+        lastRefreshedAt,
+        refreshAll
       }}
     >
       {children}

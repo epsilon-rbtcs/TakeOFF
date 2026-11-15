@@ -23,6 +23,17 @@ export const TimeDisplay: React.FC<TimeDisplayProps> = ({
 }) => {
   const [showDetails, setShowDetails] = useState<boolean>(false);
 
+  // A receipt-only or client-only record must still show its own timestamp.
+  // Prefer device time, then client creation time, then Ground receipt.
+  const primaryTimestamp = measured_at ?? created_at ?? received_at ?? null;
+  const primaryLabel = measured_at
+    ? 'Device measurement'
+    : created_at
+    ? 'Client created'
+    : received_at
+    ? 'Ground receipt'
+    : 'Timestamp';
+
   if (format === 'full') {
     return (
       <div
@@ -38,10 +49,12 @@ export const TimeDisplay: React.FC<TimeDisplayProps> = ({
           ...style
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
-          <span style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>DEVICE MEASURED:</span>
-          <span style={{ fontWeight: 700 }}>{formatTimestamp(measured_at, 'full')}</span>
-        </div>
+        {measured_at ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+            <span style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>DEVICE MEASURED:</span>
+            <span style={{ fontWeight: 700 }}>{formatTimestamp(measured_at, 'full')}</span>
+          </div>
+        ) : null}
         {created_at && (
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
             <span style={{ color: 'rgba(0,0,0,0.6)' }}>CLIENT ENVELOPED:</span>
@@ -53,6 +66,9 @@ export const TimeDisplay: React.FC<TimeDisplayProps> = ({
             <span style={{ color: 'rgba(0,0,0,0.6)' }}>GROUND RECEIVED:</span>
             <span>{formatTimestamp(received_at, 'full')}</span>
           </div>
+        )}
+        {!primaryTimestamp && (
+          <div style={{ color: 'rgba(0,0,0,0.6)' }}>No timestamp recorded.</div>
         )}
       </div>
     );
@@ -77,10 +93,12 @@ export const TimeDisplay: React.FC<TimeDisplayProps> = ({
           cursor: showProvenancePopup ? 'pointer' : 'default',
           borderBottom: showProvenancePopup ? '1px dotted #000000' : 'none'
         }}
-        title="Click to view full provenance timestamps"
+        title={`Click to view provenance timestamps (${primaryLabel})`}
       >
-        <span>{formatTimestamp(measured_at, 'relative')}</span>
-        <span style={{ fontSize: '10px', opacity: 0.6 }}>({formatTimestamp(measured_at, 'time')})</span>
+        <span>{formatTimestamp(primaryTimestamp, 'relative')}</span>
+        <span style={{ fontSize: '10px', opacity: 0.6 }}>
+          ({formatTimestamp(primaryTimestamp, 'time')})
+        </span>
       </button>
 
       {showDetails && (
@@ -129,20 +147,31 @@ export const TimeDisplay: React.FC<TimeDisplayProps> = ({
               Provenance Timestamps
             </div>
             <div style={{ marginBottom: '4px' }}>
-              <div style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>1. Device Measurement</div>
-              <div style={{ fontWeight: 700 }}>{formatTimestamp(measured_at, 'full')}</div>
+              <div style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>
+                1. {primaryLabel}
+              </div>
+              <div style={{ fontWeight: 700 }}>{formatTimestamp(primaryTimestamp, 'full')}</div>
             </div>
-            {created_at && (
+            {measured_at && created_at && (
               <div style={{ marginBottom: '4px' }}>
                 <div style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>2. Crew Client Created</div>
                 <div>{formatTimestamp(created_at, 'full')}</div>
               </div>
             )}
-            {received_at && (
+            {measured_at && received_at && (
               <div>
                 <div style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>3. Ground Station Ingest</div>
                 <div>{formatTimestamp(received_at, 'full')}</div>
               </div>
+            )}
+            {!measured_at && created_at && (
+              <div style={{ marginBottom: '4px' }}>
+                <div style={{ color: 'rgba(0,0,0,0.6)', fontWeight: 600 }}>2. Ground Station Ingest</div>
+                <div>{received_at ? formatTimestamp(received_at, 'full') : 'Not recorded'}</div>
+              </div>
+            )}
+            {!measured_at && !created_at && (
+              <div style={{ color: 'rgba(0,0,0,0.6)' }}>No additional timestamp recorded.</div>
             )}
           </div>
         </>

@@ -1,0 +1,9 @@
+table,time_column,subject_column,measurement,n_subject_groups,n_timepoints,timepoints_in_source_order
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,GLUCOSE [mg/dL] VALUE,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,GLUCOSE [mg/dL] RANGE_MIN,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,GLUCOSE [mg/dL] RANGE_MAX,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,UREA NITROGEN (BUN) [mg/dL] VALUE,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,UREA NITROGEN (BUN) [mg/dL] RANGE_MIN,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,UREA NITROGEN (BUN) [mg/dL] RANGE_MAX,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,CREATININE [mg/dL] VALUE,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194
+LSDS-8_Comprehensive_Metabolic_Panel_CMP.upload_SUBMITTED,timepoint,SUBJECT_ID,CREATININE [mg/dL] RANGE_MIN,4,7,L-92 | L-44 | L-3 | R+1 | R+45 | R+82 | R+194

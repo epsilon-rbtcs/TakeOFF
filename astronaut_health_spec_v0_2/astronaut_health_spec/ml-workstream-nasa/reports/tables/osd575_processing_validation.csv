@@ -1,0 +1,8 @@
+check,count,status
+primary_records,15813,INFO
+records_missing_subject_id,15813,REVIEW
+records_missing_timepoint,15813,REVIEW
+records_missing_unit,15813,REVIEW
+non_numeric_or_censored_values,0,PASS
+duplicate_family_subject_time_analyte_unit,15813,REVIEW
+negative_numeric_values,0,REVIEW

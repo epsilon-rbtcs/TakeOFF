@@ -126,8 +126,8 @@ uvicorn app.main:app --reload --port 8000
 - API base: `http://127.0.0.1:8000/api/v1`
 - Interactive docs: `http://127.0.0.1:8000/docs`
 - OpenAPI JSON: `http://127.0.0.1:8000/api/v1/openapi.json`
-- Health: `GET /api/v1/health`, readiness: `GET /api/v1/ready` (unauthenticated,
-  they query the database directly)
+- Liveness: `GET /api/v1/health` (unauthenticated, checks the database)
+- Readiness: `GET /api/v1/ready` (also verifies that the Ground schema exists)
 
 Get a token:
 
@@ -279,6 +279,63 @@ artefact kept for reference and is not used by this service.
 - `alembic downgrade base` — refuses to drop the schema unless
   `ALLOW_DESTRUCTIVE_DOWNGRADE=1` is set.
 
+A fresh PostgreSQL database can be initialised entirely through Alembic; no
+manual SQL is required. Do not point Alembic at a database that was already
+initialised with `schema.sql`/`init-db` but has no `alembic_version` row: the
+initial revision would try to create existing tables.
+
+---
+
+## Container deployment
+
+`docker-compose.yml` defines both services. The `api` image builds from the
+repository root so it can include the canonical `schema.sql`.
+
+Demo deployment (migrations + synthetic seed on first start):
+
+```bash
+cd services/api
+JWT_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+  docker compose up --build
+```
+
+That serves the API on `http://localhost:8000` and PostgreSQL on
+`localhost:5432`. On each start the container runs `alembic upgrade head`
+(idempotent), optionally reseeds the deterministic demo dataset, then starts
+Uvicorn. Set `AUTO_MIGRATE=false` or `DEMO_SEED_ENABLED=false` to change that.
+
+Production-style deployment:
+
+```bash
+cd services/api
+export APP_ENV=production
+export JWT_SECRET="<48+ random bytes>"
+export POSTGRES_PASSWORD="<strong password>"
+export CORS_ORIGINS="https://ground.example"
+export DEMO_SEED_ENABLED=false
+export AUTO_MIGRATE=false
+docker compose up -d postgres
+docker compose run --rm api alembic upgrade head
+docker compose up -d api
+```
+
+Production checklist:
+
+- Set `APP_ENV=production`, a strong `JWT_SECRET`, and real database
+  credentials; the app refuses to use an ephemeral secret in production.
+- Disable `DEMO_SEED_ENABLED`, `AUTO_APPLY_SCHEMA` and `SEED_ON_STARTUP`.
+- Run migrations as an explicit deploy step, not from every replica.
+- Terminate TLS at a reverse proxy; tokens are bearer credentials.
+- Point `CORS_ORIGINS` at the exact Ground Console origin.
+- Back up the PostgreSQL volume; audit rows are append-only application-side.
+
+Build the image directly if not using Compose:
+
+```bash
+# from astronaut_health_spec_v0_2/astronaut_health_spec (the directory with schema.sql)
+docker build -f services/api/Dockerfile -t ground-api:0.3.0 .
+```
+
 ---
 
 ## Configuration
@@ -319,6 +376,19 @@ The unmodified Ground Console consumes:
 
 CORS is environment-configured; the default allows the Vite dev server on
 `localhost:5173`.
+
+### NASA OSD-575 research data is not live telemetry
+
+The Crew Health Client has its own local NASA OSD-575 research adapter. Those
+records are retrospective research data held in the client's SQLite store with
+`data_origin="retrospective_research"`, `is_live_telemetry=false`,
+`clinical_threshold_applied=false` and no invented measurement timestamps. They
+are **not** pushed through `/sync/push`, are not accepted as mission
+observations, and are not exposed by this API or the Ground Console. This
+backend did not need changes for that adapter and its files are left untouched.
+
+Ground observations remain synthetic mission telemetry from the demo client;
+historical NASA research rows are never presented as current crew health data.
 
 ---
 
