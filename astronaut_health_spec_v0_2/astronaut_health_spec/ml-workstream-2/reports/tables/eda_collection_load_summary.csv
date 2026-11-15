@@ -1,0 +1,9 @@
+collection,file,rows,columns,participant_count,duplicate_rows
+ecg,ecg.csv,132,13,66,0
+eda,eda.csv,20094,6,64,1542
+fitbit_heart_rate_per_minute,fitbit_heart_rate_per_minute.csv,2131,3,66,0
+fitbit_heart_rate_per_second,fitbit_heart_rate_per_second.csv,54462,3,66,0
+fitbit_heart_rate_summary,fitbit_heart_rate_summary.csv,264,6,66,0
+participants,participants.csv,66,5,66,0
+pss_14,pss_14.csv,66,17,66,0
+stai,stai.csv,132,24,66,0

@@ -1,0 +1,9 @@
+check,observed,reference_expected
+ECG recordings,132,132
+Unique participants in ECG,66,66
+Usable ECG waveforms,132,Not specified
+EDA raw rows,20094,Row count varies by recording
+EDA participant-phase recordings,124,124
+Combined participant-phase rows,132,132
+Combined unique participants,66,66
+Rows missing EDA recording,8,8

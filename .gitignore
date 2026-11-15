@@ -41,6 +41,9 @@ __pycache__/
 .nox/
 .hypothesis/
 .ipynb_checkpoints/
+.jupyter_cache/
+.virtual_documents/
+*.nbconvert.ipynb
 .venv/
 venv/
 env/

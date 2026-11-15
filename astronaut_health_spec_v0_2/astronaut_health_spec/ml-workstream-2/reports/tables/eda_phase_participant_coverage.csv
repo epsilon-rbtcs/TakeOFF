@@ -1,0 +1,7 @@
+collection,phase,participants,rows
+ecg,RELAX,66,66
+ecg,STRESS,66,66
+eda,RELAX,64,10367
+eda,STRESS,60,9727
+stai,RELAX,66,66
+stai,STRESS,66,66

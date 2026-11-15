@@ -1,0 +1,9 @@
+collection,has_participant_id,participant_id_field,unique_participant_ids,has_phase_field,phase_values_observed
+ecg,True,username,66,True,"RELAX, STRESS"
+eda,True,username,64,True,"RELAX, STRESS"
+fitbit_heart_rate_per_minute,True,username,66,False,not available
+fitbit_heart_rate_per_second,True,username,66,False,not available
+fitbit_heart_rate_summary,True,username,66,False,not available
+participants,True,username,66,False,not available
+pss_14,True,username,66,False,not available
+stai,True,username,66,True,"RELAX, STRESS"

@@ -1,0 +1,9 @@
+collection,id_column,unique_participants,rows_without_id
+ecg,username,66,0
+eda,username,64,0
+fitbit_heart_rate_per_minute,username,66,0
+fitbit_heart_rate_per_second,username,66,0
+fitbit_heart_rate_summary,username,66,0
+participants,username,66,0
+pss_14,username,66,0
+stai,username,66,0
