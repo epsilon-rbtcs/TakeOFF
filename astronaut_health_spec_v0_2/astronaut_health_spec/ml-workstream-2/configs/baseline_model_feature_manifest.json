@@ -1,0 +1,118 @@
+{
+  "ECG \u2014 all eligible rows": {
+    "n_rows": 132,
+    "n_participants": 66,
+    "features": [
+      "ecg_device_heart_rate_bpm",
+      "ecg_mean_export_units",
+      "ecg_median_export_units",
+      "ecg_std_export_units",
+      "ecg_mad_export_units",
+      "ecg_iqr_export_units",
+      "ecg_q05_export_units",
+      "ecg_q95_export_units",
+      "ecg_min_export_units",
+      "ecg_max_export_units",
+      "ecg_peak_to_peak_export_units",
+      "ecg_rms_centered_export_units",
+      "ecg_abs_first_difference_mean",
+      "ecg_first_difference_std",
+      "ecg_skewness",
+      "ecg_excess_kurtosis",
+      "ecg_relative_power_low_0p5_40hz",
+      "ecg_relative_power_mid_0p5_40hz",
+      "ecg_relative_power_high_0p5_40hz"
+    ],
+    "excluded_features_low_participant_support": {}
+  },
+  "EDA \u2014 all available rows": {
+    "n_rows": 124,
+    "n_participants": 64,
+    "features": [
+      "eda_scl_mean_us",
+      "eda_scl_median_us",
+      "eda_scl_std_us",
+      "eda_scl_mad_us",
+      "eda_scl_iqr_us",
+      "eda_scl_min_us",
+      "eda_scl_max_us",
+      "eda_scl_slope_us_per_sec"
+    ],
+    "excluded_features_low_participant_support": {}
+  },
+  "ECG \u2014 paired cohort": {
+    "n_rows": 124,
+    "n_participants": 64,
+    "features": [
+      "ecg_device_heart_rate_bpm",
+      "ecg_mean_export_units",
+      "ecg_median_export_units",
+      "ecg_std_export_units",
+      "ecg_mad_export_units",
+      "ecg_iqr_export_units",
+      "ecg_q05_export_units",
+      "ecg_q95_export_units",
+      "ecg_min_export_units",
+      "ecg_max_export_units",
+      "ecg_peak_to_peak_export_units",
+      "ecg_rms_centered_export_units",
+      "ecg_abs_first_difference_mean",
+      "ecg_first_difference_std",
+      "ecg_skewness",
+      "ecg_excess_kurtosis",
+      "ecg_relative_power_low_0p5_40hz",
+      "ecg_relative_power_mid_0p5_40hz",
+      "ecg_relative_power_high_0p5_40hz"
+    ],
+    "excluded_features_low_participant_support": {}
+  },
+  "EDA \u2014 paired cohort": {
+    "n_rows": 124,
+    "n_participants": 64,
+    "features": [
+      "eda_scl_mean_us",
+      "eda_scl_median_us",
+      "eda_scl_std_us",
+      "eda_scl_mad_us",
+      "eda_scl_iqr_us",
+      "eda_scl_min_us",
+      "eda_scl_max_us",
+      "eda_scl_slope_us_per_sec"
+    ],
+    "excluded_features_low_participant_support": {}
+  },
+  "ECG + EDA \u2014 paired cohort": {
+    "n_rows": 124,
+    "n_participants": 64,
+    "features": [
+      "ecg_device_heart_rate_bpm",
+      "ecg_mean_export_units",
+      "ecg_median_export_units",
+      "ecg_std_export_units",
+      "ecg_mad_export_units",
+      "ecg_iqr_export_units",
+      "ecg_q05_export_units",
+      "ecg_q95_export_units",
+      "ecg_min_export_units",
+      "ecg_max_export_units",
+      "ecg_peak_to_peak_export_units",
+      "ecg_rms_centered_export_units",
+      "ecg_abs_first_difference_mean",
+      "ecg_first_difference_std",
+      "ecg_skewness",
+      "ecg_excess_kurtosis",
+      "ecg_relative_power_low_0p5_40hz",
+      "ecg_relative_power_mid_0p5_40hz",
+      "ecg_relative_power_high_0p5_40hz",
+      "eda_scl_mean_us",
+      "eda_scl_median_us",
+      "eda_scl_std_us",
+      "eda_scl_mad_us",
+      "eda_scl_iqr_us",
+      "eda_scl_min_us",
+      "eda_scl_max_us",
+      "eda_scl_slope_us_per_sec"
+    ],
+    "excluded_features_low_participant_support": {}
+  }
+}

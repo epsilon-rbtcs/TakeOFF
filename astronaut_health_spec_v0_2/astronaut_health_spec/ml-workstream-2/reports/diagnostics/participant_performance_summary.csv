@@ -1,0 +1,6 @@
+experiment,model,participants,median_participant_accuracy,mean_participant_accuracy,participants_below_50pct_accuracy,participants_at_or_above_80pct_accuracy
+ECG — all eligible rows,Gradient Boosting,66,0.5,0.5984848484848485,6,19
+EDA — all available rows,Random Forest,64,0.75,0.6953125,7,32
+ECG — paired cohort,Gradient Boosting,64,0.5,0.609375,7,21
+EDA — paired cohort,Random Forest,64,0.75,0.6953125,7,32
+ECG + EDA — paired cohort,Gradient Boosting,64,0.5,0.5625,13,21

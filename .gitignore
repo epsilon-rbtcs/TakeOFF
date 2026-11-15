@@ -64,7 +64,16 @@ env/
 **/data/processed/
 **/models/checkpoints/
 **/models/preprocessors/
+**/models/*.joblib
+**/models/*.metadata.json
 **/logs/
+
+# Experiment tracking state
+mlruns/
+wandb/
+tensorboard/
+checkpoints/
+artifacts/
 
 # Large generated/model artifacts
 *.bin
